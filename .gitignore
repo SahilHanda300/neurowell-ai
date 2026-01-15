@@ -1,0 +1,31 @@
+﻿# Byte-compiled / virtualenv
+__pycache__/
+.venv/
+env/
+venv/
+# .env file
+.env
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+*.py[cod]
+*$py.class
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+
+# Instructions+Project Plan for a seamless project delivery
+
+instructions.md
+project-plan.md
