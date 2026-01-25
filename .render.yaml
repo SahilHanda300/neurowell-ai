@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: neurowell-ai
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    envVars:
+      - key: SECRET_KEY
+        value: ""
+      - key: GOOGLE_CLIENT_ID
+        value: ""
+      - key: GOOGLE_CLIENT_SECRET
+        value: ""
+      - key: SESSION_TYPE
+        value: "filesystem"
