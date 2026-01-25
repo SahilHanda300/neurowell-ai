@@ -213,11 +213,11 @@ class RAGChain:
             for k, v in fused_map.items():
                 out = re.sub(rf'(?i)\b{k}\b', v, out)
 
-            # Aggressive de-fragmentation: join sequences of short letter-groups
-            # like 'ps ychotic s ympt oms' -> 'psychotic symptoms'. Match
-            # runs of 3+ alpha-groups separated by spaces and remove internal spaces.
+                    # Conservative de-fragmentation: only join sequences of single-letter groups
+            # like 'p s y c h o s i s' -> 'psychosis'. Avoid collapsing normal
+            # multi-letter words which would incorrectly remove spaces between words.
             out = re.sub(
-                r"\b(?:[A-Za-z]{1,10}\s+){2,}[A-Za-z]{1,10}\b",
+                r"\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b",
                 lambda m: re.sub(r"\s+", "", m.group(0)),
                 out,
             )
