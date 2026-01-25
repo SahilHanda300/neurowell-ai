@@ -146,7 +146,7 @@ def qa():
 
                 prompt_text = (
                     "Answer concisely: definition, causes, coping strategies, when to seek help. "
-                    "Do not insert spaces inside words.\n\nQuestion:\n" + (question or "") + "\n\nAnswer:"
+                    "Return cleanly formatted text.\n\nQuestion:\n" + (question or "") + "\n\nAnswer:"
                 )
                 contents = [{"role": "user", "parts": [{"text": prompt_text}]}]
                 # Request a smaller response to conserve quota

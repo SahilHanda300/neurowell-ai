@@ -238,7 +238,7 @@ class RAGChain:
                 "Provide a concise, practical answer to the user's question. "
                 "Include a brief definition, common causes or triggers if relevant, "
                 "practical coping strategies, and guidance on when to seek professional help. "
-                "Be empathetic and concise. Do NOT insert extra spaces inside words or between letters; return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
+                "Be empathetic and concise. Return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
             )
 
             # Try LangChain LLMChain first if available
@@ -489,7 +489,7 @@ class RAGChain:
                 "Provide a concise, practical answer to the user's question. "
                 "Include a brief definition, common causes or triggers if relevant, "
                 "practical coping strategies, and guidance on when to seek professional help. "
-                "Be empathetic and concise. Do NOT insert extra spaces inside words or between letters; return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
+                "Be empathetic and concise. Return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
             )
             # Try using LangChain LLMChain if available
             if LLMChain is not None and PromptTemplate is not None and llm_factory is not None:
