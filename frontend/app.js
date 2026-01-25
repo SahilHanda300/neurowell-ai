@@ -50,7 +50,19 @@ async function askQuestion() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: q }),
     });
-    if (!resp.ok) throw new Error(await resp.text());
+    if (!resp.ok) {
+      try {
+        const txt = await resp.text();
+        console.warn("/api/qa returned non-ok", resp.status, txt);
+        throw new Error(txt || `status ${resp.status}`);
+      } catch (e) {
+        console.warn(
+          "/api/qa returned non-ok (failed to read body)",
+          resp.status,
+        );
+        throw new Error(`status ${resp.status}`);
+      }
+    }
     const data = await resp.json();
 
     // Render
@@ -59,100 +71,110 @@ async function askQuestion() {
     const answer =
       data.answer || data.response || data.result || JSON.stringify(data);
     if (typeof answer === "string") {
-      // preserve basic markdown (bold/italic) but render safely:
-      // 1) escape HTML, 2) convert **bold** and *italic* into tags, 3) convert newlines to paragraphs
-      let escaped = escapeHtml(answer);
-      // convert bold (**text**) then italics (*text*) — non-greedy
-      let md = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-      md = md.replace(/\*(.+?)\*/g, "<em>$1</em>");
-      // normalize newlines
-      md = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-      // fix cases where sentences run together without a space after punctuation
-      cleaned = cleaned.replace(/([\.\?!])([A-Z0-9"'\u2018\u201C])/g, "$1 $2");
-      // if there are no explicit newlines and the text is long, split into
-      // sentences and make them paragraphs to improve readability
-      if (!/\n/.test(cleaned) && cleaned.length > 200) {
-        const sentences = cleaned.match(
-          /[^\.\?!]+[\.\?!]+["']?|[^\.\?!]+$/g,
-        ) || [cleaned];
-        cleaned = sentences
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .join("\n\n");
-      }
+      try {
+        // preserve basic markdown (bold/italic) but render safely:
+        // 1) escape HTML, 2) convert **bold** and *italic* into tags, 3) convert newlines to paragraphs
+        let escaped = escapeHtml(answer);
+        // convert bold (**text**) then italics (*text*) — non-greedy
+        let md = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        md = md.replace(/\*(.+?)\*/g, "<em>$1</em>");
+        // normalize newlines
+        md = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+        // operate on a normalized variable `cleaned`
+        let cleaned = md;
+        // fix cases where sentences run together without a space after punctuation
+        cleaned = cleaned.replace(
+          /([\.\?!])([A-Z0-9"'\u2018\u201C])/g,
+          "$1 $2",
+        );
+        // if there are no explicit newlines and the text is long, split into
+        // sentences and make them paragraphs to improve readability
+        if (!/\n/.test(cleaned) && cleaned.length > 200) {
+          const sentences = cleaned.match(
+            /[^\.\?!]+[\.\?!]+["']?|[^\.\?!]+$/g,
+          ) || [cleaned];
+          cleaned = sentences
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .join("\n\n");
+        }
 
-      // Remove any lines that contain URLs or domain-like tokens (avoid showing
-      // state/country-specific links) and redact location-specific lines by
-      // replacing them with a single generic note. Then rejoin paragraphs.
-      const rawLines = cleaned
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      let sawGeneric = false;
-      const processed = rawLines
-        .map((l) => {
-          // drop URL/domain lines entirely
-          if (
-            /https?:\/\//i.test(l) ||
-            /\b\S+\.(com|org|uk|gov|net|edu)\b/i.test(l)
-          ) {
-            return null;
-          }
-          // basic heuristic for location/place lines (directions, county/city keywords)
-          const locRe =
-            /\b(North|South|East|West|Central|Upper|Lower|County|Region|Province|State|Cumbria|shire|Borough|City|Town|District)\b/i;
-          const placeSuffixRe =
-            /\b[A-Z][a-z]+(?:\s+(County|Cumbria|shire|City|Town|Borough|District))\b/;
-          if (locRe.test(l) || placeSuffixRe.test(l)) {
-            if (!sawGeneric) {
-              sawGeneric = true;
-              return "Contact local support services or national helplines for help in your area.";
-            }
-            return null;
-          }
-          return l;
-        })
-        .filter(Boolean);
-      const cleaned2 = processed.length
-        ? processed.join("\n\n")
-        : "Contact local support services or national helplines for help in your area.";
-
-      // If the answer looks like a numbered list (e.g. "1. ... 2. ..."), render as <ol>
-      const numberedItems = cleaned2
-        .split(/(?=\d+\.\s+)/)
-        .filter((s) => s.trim());
-      if (numberedItems.length > 1) {
-        const itemsHtml = numberedItems
-          .map((it) => {
-            // strip leading number and dot
-            const withoutNum = it.replace(/^\s*\d+\.\s*/, "");
-            return `<li>${escapeHtml(withoutNum.trim())}</li>`;
-          })
-          .join("");
-        answerCard.innerHTML = `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`;
-      } else {
-        // support bullet-style lists (lines starting with '-', '•', or '*')
-        const bulletLines = cleaned2
+        // Remove any lines that contain URLs or domain-like tokens (avoid showing
+        // state/country-specific links) and redact location-specific lines by
+        // replacing them with a single generic note. Then rejoin paragraphs.
+        const rawLines = cleaned
           .split(/\r?\n/)
           .map((l) => l.trim())
           .filter(Boolean);
-        const isBulletList = bulletLines.every((l) => /^[-•\*]\s+/.test(l));
-        if (isBulletList) {
-          const itemsHtml = bulletLines
-            .map((l) => l.replace(/^[-•\*]\s+/, ""))
-            .map((t) => `<li>${escapeHtml(t)}</li>`)
+        let sawGeneric = false;
+        const processed = rawLines
+          .map((l) => {
+            // drop URL/domain lines entirely
+            if (
+              /https?:\/\//i.test(l) ||
+              /\b\S+\.(com|org|uk|gov|net|edu)\b/i.test(l)
+            ) {
+              return null;
+            }
+            // basic heuristic for location/place lines (directions, county/city keywords)
+            const locRe =
+              /\b(North|South|East|West|Central|Upper|Lower|County|Region|Province|State|Cumbria|shire|Borough|City|Town|District)\b/i;
+            const placeSuffixRe =
+              /\b[A-Z][a-z]+(?:\s+(County|Cumbria|shire|City|Town|Borough|District))\b/;
+            if (locRe.test(l) || placeSuffixRe.test(l)) {
+              if (!sawGeneric) {
+                sawGeneric = true;
+                return "Contact local support services or national helplines for help in your area.";
+              }
+              return null;
+            }
+            return l;
+          })
+          .filter(Boolean);
+        const cleaned2 = processed.length
+          ? processed.join("\n\n")
+          : "Contact local support services or national helplines for help in your area.";
+
+        // If the answer looks like a numbered list (e.g. "1. ... 2. ..."), render as <ol>
+        const numberedItems = cleaned2
+          .split(/(?=\d+\.\s+)/)
+          .filter((s) => s.trim());
+        if (numberedItems.length > 1) {
+          const itemsHtml = numberedItems
+            .map((it) => {
+              // strip leading number and dot
+              const withoutNum = it.replace(/^\s*\d+\.\s*/, "");
+              return `<li>${escapeHtml(withoutNum.trim())}</li>`;
+            })
             .join("");
-          answerCard.innerHTML = `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`;
+          answerCard.innerHTML = `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`;
         } else {
-          // Preserve single newlines as line breaks and double newlines as paragraphs
-          const paras = cleaned2
-            .split(/\n\n+/)
-            .map((p) => p.trim())
+          // support bullet-style lists (lines starting with '-', '•', or '*')
+          const bulletLines = cleaned2
+            .split(/\r?\n/)
+            .map((l) => l.trim())
             .filter(Boolean);
-          answerCard.innerHTML = paras
-            .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
-            .join("");
+          const isBulletList = bulletLines.every((l) => /^[-•\*]\s+/.test(l));
+          if (isBulletList) {
+            const itemsHtml = bulletLines
+              .map((l) => l.replace(/^[-•\*]\s+/, ""))
+              .map((t) => `<li>${escapeHtml(t)}</li>`)
+              .join("");
+            answerCard.innerHTML = `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`;
+          } else {
+            // Preserve single newlines as line breaks and double newlines as paragraphs
+            const paras = cleaned2
+              .split(/\n\n+/)
+              .map((p) => p.trim())
+              .filter(Boolean);
+            answerCard.innerHTML = paras
+              .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
+              .join("");
+          }
         }
+      } catch (e) {
+        console.error("answer rendering error", e);
+        answerCard.textContent = answer;
       }
     } else {
       answerCard.textContent = JSON.stringify(answer, null, 2);
@@ -213,7 +235,15 @@ let _selectedIndex = -1;
 async function fetchTopics() {
   try {
     const res = await fetch("/api/topics");
-    if (!res.ok) return [];
+    if (!res.ok) {
+      try {
+        const txt = await res.text();
+        console.warn("/api/topics returned non-ok", res.status, txt);
+      } catch (e) {
+        console.warn("/api/topics returned non-ok", res.status);
+      }
+      return [];
+    }
     const j = await res.json();
     return Array.isArray(j.topics) ? j.topics : j.topics || [];
   } catch (e) {
@@ -228,6 +258,17 @@ function showSuggestions(list) {
     suggestionsEl.innerHTML = "";
     _selectedIndex = -1;
     return;
+  }
+  // Leave room for the Ask button on the right so the popup doesn't
+  // extend underneath it on narrow screens.
+  try {
+    const rightPad = 96; // px reserved for Ask button + gap
+    suggestionsEl.style.right = rightPad + "px";
+    suggestionsEl.style.maxWidth = `calc(100% - ${rightPad}px)`;
+    suggestionsEl.style.boxSizing = "border-box";
+    suggestionsEl.style.zIndex = 50;
+  } catch (e) {
+    // ignore styling errors
   }
   suggestionsEl.classList.remove("hidden");
   suggestionsEl.innerHTML = list

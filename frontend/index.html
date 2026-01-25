@@ -232,26 +232,28 @@
       style="display: none"
       class="fixed bottom-0 left-0 right-0 bg-white border-t"
     >
-      <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <div class="max-w-3xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <label for="question" class="sr-only">Question</label>
-        <div class="relative flex-1 min-w-0">
+        <div class="relative flex-1 min-w-0 w-full">
           <textarea
             id="question"
-            rows="2"
-            class="w-full resize-none rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2"
+            rows="3"
+            class="w-full resize-none rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2 flex-grow min-w-0"
+            style="min-height:56px"
             placeholder="Enter your question here..."
           ></textarea>
           <div
             id="suggestions"
-            class="absolute left-0 right-0 bg-white border rounded-md shadow z-50 hidden max-h-48 overflow-auto"
-            style="top: auto; bottom: calc(100% + 0.25rem)"
+            class="absolute left-0 bg-white border rounded-md shadow hidden max-h-48 overflow-auto"
+            style="top: auto; bottom: calc(100% + 0.25rem); right:96px; box-sizing:border-box; max-width:calc(100% - 96px); z-index:9999; pointer-events:auto;"
           ></div>
         </div>
-        <div class="flex items-center gap-3">
-          <div id="status" class="text-sm text-gray-500"></div>
+        <div class="flex items-center gap-3 w-full sm:w-auto" style="flex-shrink:0">
+          <div id="status" class="text-sm text-gray-500 hidden sm:block" style="min-width:72px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></div>
           <button
             id="askBtn"
-            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none"
+            class="inline-flex items-center px-3 sm:px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none flex-shrink-0"
+            style="min-width:56px"
           >
             Ask
           </button>
