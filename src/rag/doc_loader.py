@@ -1,6 +1,11 @@
 import os
 from typing import List
-from PyPDF2 import PdfReader
+try:
+    from PyPDF2 import PdfReader
+    _PDF_AVAILABLE = True
+except Exception:
+    PdfReader = None
+    _PDF_AVAILABLE = False
 import shutil
 
 # OCR fallback imports are optional and only used when available.
@@ -26,6 +31,13 @@ def load_pdfs_from_data(data_dir: str = "data") -> List[dict]:
         if not fname.lower().endswith(".pdf"):
             continue
         path = os.path.join(data_dir, fname)
+        # If PyPDF2 is not available (e.g., lightweight deployment), don't
+        # attempt to import/parse PDFs — add a placeholder entry so the
+        # rest of the pipeline can still enumerate filenames.
+        if not _PDF_AVAILABLE:
+            placeholder = f"[pdf parsing unavailable: {fname}]"
+            docs.append({"source": fname, "text": placeholder})
+            continue
         try:
             reader = PdfReader(path)
             full_text = []
