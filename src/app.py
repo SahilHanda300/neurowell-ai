@@ -61,7 +61,8 @@ def create_app():
 
     @app.route("/")
     def home():
-        return {"status": "ok", "service": "NeuroWell AI"}
+        # Serve the frontend index at the root so the app is available at '/'
+        return send_from_directory(str(frontend_dir), "index.html")
 
     # Initialize OAuth (Google OpenID Connect) if credentials are present
     oauth = OAuth(app)
@@ -83,17 +84,13 @@ def create_app():
 
     from flask import session, redirect, url_for
 
+    # Keep the legacy /frontend routes as redirects to the new root
     @app.route("/frontend/")
     def serve_frontend_index():
-        # Public landing page: serve the frontend index without requiring
-        # authentication so visitors can see the landing/CTA. Client JS will
-        # check `/auth/me` to decide whether to prompt for sign-in.
-        return send_from_directory(str(frontend_dir), "index.html")
+        return redirect(url_for('home'))
 
     @app.route("/frontend/<path:filename>")
     def serve_frontend_file(filename):
-        # Serve frontend static files publicly (landing assets). Authentication
-        # is handled client-side for the landing experience.
         return send_from_directory(str(frontend_dir), filename)
 
     @app.route("/logged_out")
@@ -107,5 +104,19 @@ def create_app():
         app.register_blueprint(auth_bp)
     except Exception:
         logging.getLogger('src.app').exception('Failed to register auth blueprint')
+
+    # Catch-all: serve frontend static files from project root when they exist.
+    # This allows the frontend to be hosted at `/` and reference assets like
+    # `/app.js` or `/styles.css` without requiring the `/frontend/` prefix.
+    @app.route('/<path:filename>')
+    def serve_static_root(filename):
+        candidate = frontend_dir / filename
+        if candidate.exists() and candidate.is_file():
+            return send_from_directory(str(frontend_dir), filename)
+        # Not a frontend static file - return normal 404 so other blueprints
+        # or routes can handle it (e.g., /api, /auth).
+        from flask import abort
+
+        abort(404)
 
     return app
