@@ -1,0 +1,12 @@
+flask
+authlib
+Flask-Session
+gunicorn
+requests
+python-dotenv
+# Optional/ML (install separately for production as needed):
+# sentence-transformers
+# faiss-cpu
+# transformers
+# pytesseract
+# pdf2image
