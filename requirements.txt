@@ -5,3 +5,4 @@ Flask-Cors
 gunicorn
 requests
 python-dotenv
+faiss-cpu

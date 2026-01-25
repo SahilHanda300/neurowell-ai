@@ -78,14 +78,14 @@
                 aria-controls="mobileMenu"
                 onclick="toggleMobileMenu(event)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
+                <img
+                  id="profilePhotoMobileHeader"
+                  src=""
+                  alt="Profile"
+                  class="hidden rounded-full object-cover border cursor-pointer transform -translate-y-1"
+                  style="width:36px; height:36px; object-fit:cover; margin-right:8px;"
+                  onclick="showProfileModal(event)"
+                />
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
