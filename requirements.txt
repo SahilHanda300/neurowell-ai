@@ -7,6 +7,6 @@ requests
 python-dotenv
 faiss-cpu
 PyPDF2
-google-generativeai
+google-generative-ai
 langchain
 langchain-community

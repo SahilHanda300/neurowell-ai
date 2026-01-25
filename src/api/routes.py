@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import logging
 import traceback
+import importlib
 
 from src.rag.chain import RAGChain
 def postprocess_text(text: str) -> str:
@@ -105,11 +106,18 @@ def qa():
     error_msg = None
     chain = None
     llm_debug = {"attempted": False, "success": False, "candidates_present": False, "error": None}
-    # If a GenAI key is configured, prefer calling the LLM directly from the API
-    # to avoid returning noisy PDF-derived snippets. This is an unconditional
-    # bypass of the RAG chain when the key is present and the client call
-    # succeeds.
-    if os.getenv("GEMINI_API_KEY"):
+    # If a GenAI key is configured and the client library is available,
+    # prefer calling the LLM directly from the API to avoid returning noisy
+    # PDF-derived snippets. Only attempt the direct client when the
+    # `google.genai` package is importable to avoid ModuleNotFoundError on
+    # deployments where the package isn't installed.
+    try:
+        _genai_spec = importlib.util.find_spec("google.genai")
+        _GENAI_AVAILABLE = _genai_spec is not None
+    except Exception:
+        _GENAI_AVAILABLE = False
+
+    if os.getenv("GEMINI_API_KEY") and _GENAI_AVAILABLE:
         try:
             import re
 
