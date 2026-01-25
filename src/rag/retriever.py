@@ -61,7 +61,7 @@ class RAGRetriever:
         with open(self.docstore_path, "w", encoding="utf-8") as f:
             json.dump(self.docstore, f, ensure_ascii=False)
 
-    def get_top_k(self, query: str, k: int = 4) -> List[Tuple[float, str]]:
+    def get_top_k(self, query: str, k: int = 4) -> List[Tuple[float, str, dict]]:
         if self.index is None or len(self.docstore) == 0:
             return []
         # ensure model loaded to compute query embedding
@@ -72,5 +72,6 @@ class RAGRetriever:
         for score, idx in zip(D[0], I[0]):
             if idx < 0 or idx >= len(self.docstore):
                 continue
-            results.append((float(score), self.docstore[idx]["text"]))
+            # return score, text, and original metadata (docstore entry)
+            results.append((float(score), self.docstore[idx]["text"], self.docstore[idx]))
         return results

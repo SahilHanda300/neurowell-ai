@@ -21,11 +21,3 @@ Thumbs.db
 # Logs
 logs/
 *.log
-
-# Data
-data/
-
-# Instructions+Project Plan for a seamless project delivery
-
-instructions.md
-project-plan.md

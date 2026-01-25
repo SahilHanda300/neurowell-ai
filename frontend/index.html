@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NeuroWell AI</title>
+    <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white text-gray-900">
+    <!-- Full-width header -->
+    <header class="w-full bg-sky-50">
+      <div class="w-full py-4">
+        <div class="max-w-3xl mx-auto px-4 flex items-center justify-between">
+          <div>
+            <h1
+              class="text-xl sm:text-2xl font-semibold text-gray-900 leading-tight"
+            >
+              NeuroWell AI
+            </h1>
+            <p class="text-sm text-gray-600 mt-1">
+              Professional mental health support, powered by AI
+            </p>
+          </div>
+
+          <nav class="flex items-center gap-3">
+            <!-- Desktop nav -->
+            <div class="hidden md:flex items-center gap-3">
+              <div class="relative flex items-center">
+                <img
+                  id="profilePhoto"
+                  src=""
+                  alt="Profile"
+                  class="hidden ml-2 rounded-full object-cover border cursor-pointer"
+                  style="
+                    width: 36px;
+                    height: 36px;
+                    min-width: 36px;
+                    object-fit: cover;
+                  "
+                  onclick="showProfileModal(event)"
+                />
+                <span
+                  id="profileName"
+                  class="hidden ml-3 text-sm text-gray-800 cursor-pointer"
+                  onclick="showProfileModal(event)"
+                ></span>
+                <div
+                  id="profileMenu"
+                  class="hidden absolute left-0 top-full mt-2 w-40 bg-white border rounded shadow py-1 z-50"
+                  style="transform: translateY(0.25rem)"
+                >
+                  <button
+                    id="logoutBtn"
+                    class="hidden w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mobile hamburger -->
+            <div class="md:hidden flex items-center gap-2">
+              <img
+                id="profilePhotoMobileHeader"
+                src=""
+                alt="Profile"
+                class="hidden rounded-full object-cover border cursor-pointer"
+                style="width: 36px; height: 36px; object-fit: cover"
+                onclick="showProfileModal(event)"
+              />
+              <button
+                id="mobileToggle"
+                type="button"
+                class="hidden p-2 rounded hover:bg-gray-100 z-50"
+                aria-expanded="false"
+                aria-controls="mobileMenu"
+                onclick="toggleMobileMenu(event)"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+            </div>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Mobile menu panel -->
+      <div id="mobileMenu" class="md:hidden hidden bg-white border-t z-40">
+        <div class="max-w-3xl mx-auto px-4 py-2">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col items-center gap-1 py-2">
+              <img
+                id="profilePhotoMobile"
+                src=""
+                alt="Profile"
+                class="hidden rounded-full object-cover border cursor-pointer"
+                style="width: 36px; height: 36px; object-fit: cover"
+                onclick="showProfileModal(event)"
+              />
+              <span
+                id="profileNameMobile"
+                class="hidden text-sm text-gray-800 cursor-pointer"
+                onclick="showProfileModal(event)"
+              ></span>
+              <button
+                id="logoutBtnMobile"
+                class="hidden mt-2 text-sm text-gray-700 hover:underline"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="min-h-screen flex items-start justify-center py-12 px-4">
+      <div class="w-full max-w-3xl">
+        <main class="bg-white rounded-lg shadow-sm p-6 pb-32">
+          <section id="intro" class="mt-6">
+            <div class="bg-white rounded-md p-8 shadow-sm">
+              <div class="text-center max-w-2xl mx-auto">
+                <h1 class="text-2xl sm:text-3xl font-semibold text-gray-900">
+                  NeuroWell — Compassionate mental health guidance, backed by
+                  evidence
+                </h1>
+                <p class="mt-3 text-gray-600 text-sm">
+                  Ask about symptoms, coping strategies, or next steps.
+                  NeuroWell provides concise, evidence-informed answers and,
+                  when relevant, suggests local providers.
+                </p>
+                <div class="mt-6 flex justify-center">
+                  <a
+                    href="/auth/google/login?prompt=select_account"
+                    class="inline-flex items-center px-4 py-2 bg-sky-600 text-white rounded shadow hover:bg-sky-700"
+                  >
+                    Sign in with Google
+                  </a>
+                </div>
+              </div>
+
+              <div class="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="p-4 border rounded text-sm">
+                  <h3 class="font-medium text-gray-800">Quick answers</h3>
+                  <p class="text-gray-600 mt-2">
+                    Clear, actionable responses to help you decide next steps.
+                  </p>
+                </div>
+                <div class="p-4 border rounded text-sm">
+                  <h3 class="font-medium text-gray-800">Evidence-informed</h3>
+                  <p class="text-gray-600 mt-2">
+                    Summaries grounded in reputable sources and local guidance.
+                  </p>
+                </div>
+                <div class="p-4 border rounded text-sm">
+                  <h3 class="font-medium text-gray-800">Privacy-first</h3>
+                  <p class="text-gray-600 mt-2">
+                    We keep interactions within this application and its
+                    services.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="ready" class="mt-6">
+            <div
+              class="bg-gray-50 border border-gray-100 rounded-md p-6 flex items-center justify-between"
+            >
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900">
+                  Ready to chat?
+                </h2>
+                <p class="text-sm text-gray-600 mt-1">
+                  Sign in with Google to start a conversation — your privacy and
+                  safety are respected.
+                </p>
+              </div>
+              <!-- Right-side CTA removed to keep a single hero CTA centered above -->
+            </div>
+          </section>
+
+          <section id="result" class="mt-2 hidden">
+            <div class="flex justify-between items-start mb-2">
+              <h2 class="text-lg font-semibold">Answer</h2>
+              <div id="severityContainer"></div>
+            </div>
+            <div
+              id="answerCard"
+              class="bg-gray-50 border border-gray-100 rounded-md p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"
+            ></div>
+
+            <!-- Sources section removed (answers shown directly) -->
+            <div id="providersSection" class="mt-4 hidden">
+              <h3 class="text-sm font-medium text-gray-700">
+                Suggested providers
+              </h3>
+              <div id="providersList" class="mt-2 space-y-2"></div>
+            </div>
+          </section>
+        </main>
+
+        <div class="max-w-3xl mx-auto px-4 mt-4 mb-12">
+          <p class="text-xs text-gray-500">
+            Privacy note: Questions and responses are processed by this
+            application and its configured services to provide answers and for
+            auditing. Please avoid sharing highly sensitive personal
+            information.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed bottom input bar (placed outside the centered content wrapper so
+          it aligns with the header/main max-width). Hidden until signed-in. -->
+    <footer
+      id="chatFooter"
+      style="display: none"
+      class="fixed bottom-0 left-0 right-0 bg-white border-t"
+    >
+      <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        <label for="question" class="sr-only">Question</label>
+        <div class="relative flex-1">
+          <textarea
+            id="question"
+            rows="2"
+            class="w-full resize-none rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2"
+            placeholder="Enter your question here..."
+          ></textarea>
+          <div
+            id="suggestions"
+            class="absolute left-0 right-0 bg-white border rounded-md shadow z-50 hidden max-h-48 overflow-auto"
+            style="top: auto; bottom: calc(100% + 0.25rem)"
+          ></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="status" class="text-sm text-gray-500"></div>
+          <button
+            id="askBtn"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none"
+          >
+            Ask
+          </button>
+        </div>
+      </div>
+    </footer>
+
+    <script src="./app.js"></script>
+    <script>
+      // Profile modal control
+      function showProfileModal(e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const modal = document.getElementById("profileModal");
+        if (!modal) return;
+        modal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+      }
+
+      function hideProfileModal() {
+        const modal = document.getElementById("profileModal");
+        if (!modal) return;
+        modal.classList.add("hidden");
+        document.body.style.overflow = "";
+      }
+      async function loadProfilePhoto() {
+        try {
+          const res = await fetch("/auth/me");
+          if (res.status === 401) {
+            // not authenticated; don't show photo
+            return;
+          }
+          const j = await res.json();
+          const name =
+            (j &&
+              j.user &&
+              (j.user.name || j.user.displayName || j.user.email)) ||
+            null;
+          const picture = (j && j.user && j.user.picture) || null;
+
+          if (picture) {
+            const img = document.getElementById("profilePhoto");
+            img.onload = () => img.classList.remove("hidden");
+            img.onerror = () => img.classList.add("hidden");
+            img.src = picture;
+            const imgMobile = document.getElementById("profilePhotoMobile");
+            if (imgMobile) {
+              imgMobile.onload = () => imgMobile.classList.remove("hidden");
+              imgMobile.onerror = () => imgMobile.classList.add("hidden");
+              imgMobile.src = picture;
+            }
+
+            // If no picture provided by provider, generate an initials avatar SVG
+            if (name) {
+              try {
+                // Always show a single-letter initials avatar in header/mobile/modal,
+                // even if a provider photo exists. This ensures consistent testable UI.
+                const initial =
+                  (name || "").trim().charAt(0).toUpperCase() || "";
+                const bg = "#60A5FA"; // light blue
+                const fg = "#FFFFFF";
+                const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><circle cx='60' cy='60' r='60' fill='${bg}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Inter, system-ui, -apple-system, Roboto, "Segoe UI", Helvetica, Arial' font-size='56' font-weight='600' fill='${fg}'>${initial}</text></svg>`;
+                const dataUrl =
+                  "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+
+                const img = document.getElementById("profilePhoto");
+                if (img) {
+                  img.onload = () => img.classList.remove("hidden");
+                  img.onerror = () => img.classList.add("hidden");
+                  img.src = dataUrl;
+                }
+                const imgMobile = document.getElementById("profilePhotoMobile");
+                if (imgMobile) {
+                  imgMobile.onload = () => imgMobile.classList.remove("hidden");
+                  imgMobile.onerror = () => imgMobile.classList.add("hidden");
+                  imgMobile.src = dataUrl;
+                }
+                const modalPhoto = document.getElementById("profileModalPhoto");
+                if (modalPhoto) {
+                  modalPhoto.src = dataUrl;
+                  modalPhoto.classList.remove("hidden");
+                }
+                const mobileHeaderImg = document.getElementById(
+                  "profilePhotoMobileHeader",
+                );
+                if (mobileHeaderImg) {
+                  mobileHeaderImg.src = dataUrl;
+                  mobileHeaderImg.classList.remove("hidden");
+                }
+                // hide duplicate mobile menu photo to avoid two images
+                if (imgMobile) imgMobile.classList.add("hidden");
+              } catch (e) {
+                console.debug("initials avatar generation failed", e);
+              }
+            }
+          }
+
+          if (name) {
+            const label = document.getElementById("profileName");
+            if (label) {
+              label.textContent = name;
+              label.classList.remove("hidden");
+            }
+            const labelMobile = document.getElementById("profileNameMobile");
+            if (labelMobile) {
+              labelMobile.textContent = name;
+              labelMobile.classList.remove("hidden");
+            }
+            // if no picture, ensure at least the name is visible as a fallback
+            if (!picture) {
+              const img = document.getElementById("profilePhoto");
+              if (img) img.classList.add("hidden");
+            }
+            // populate modal fields
+            const modalName = document.getElementById("profileModalName");
+            if (modalName) modalName.textContent = name;
+            const modalPhoto = document.getElementById("profileModalPhoto");
+            if (modalPhoto) {
+              try {
+                // Always show the initials avatar in the modal (larger size),
+                // but show provider photo inside modal if you prefer — initials are clearer for tests.
+                const initial =
+                  (name || "").trim().charAt(0).toUpperCase() || "";
+                const bg = "#60A5FA";
+                const fg = "#FFFFFF";
+                const svgModal = `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 120 120'><circle cx='60' cy='60' r='60' fill='${bg}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Inter, system-ui, -apple-system, Roboto, "Segoe UI", Helvetica, Arial' font-size='56' font-weight='600' fill='${fg}'>${initial}</text></svg>`;
+                const dataUrlModal =
+                  "data:image/svg+xml;utf8," + encodeURIComponent(svgModal);
+                modalPhoto.src = dataUrlModal;
+                modalPhoto.classList.remove("hidden");
+                // enforce visible size/circle in case CSS differs
+                modalPhoto.style.width = "80px";
+                modalPhoto.style.height = "80px";
+                modalPhoto.style.objectFit = "cover";
+                modalPhoto.alt = name || "Profile";
+              } catch (e) {
+                modalPhoto.classList.add("hidden");
+              }
+            }
+            const modalLogout = document.getElementById("profileModalLogout");
+            if (modalLogout)
+              modalLogout.addEventListener("click", function () {
+                console.debug(
+                  "logout (modal) clicked, navigating to /auth/logout",
+                );
+                location.replace("/auth/logout");
+              });
+            // Hide landing CTAs now that the user is authenticated
+            try {
+              const ready = document.getElementById("ready");
+              if (ready) ready.style.display = "none";
+              const intro = document.getElementById("intro");
+              if (intro) {
+                const signinLinks = intro.querySelectorAll(
+                  'a[href^="/auth/google/login"]',
+                );
+                signinLinks.forEach((el) => el.remove());
+              }
+              // unhide mobile hamburger toggle on small screens
+              try {
+                const mobileToggle = document.getElementById("mobileToggle");
+                const mobileHeaderImg = document.getElementById(
+                  "profilePhotoMobileHeader",
+                );
+                if (mobileHeaderImg) {
+                  // show header avatar and hide hamburger
+                  mobileHeaderImg.classList.remove("hidden");
+                  if (mobileToggle) mobileToggle.classList.add("hidden");
+                } else if (mobileToggle) {
+                  mobileToggle.classList.remove("hidden");
+                }
+              } catch (e) {
+                console.debug("unhide mobile toggle failed", e);
+              }
+              // show chat footer now that the user is authenticated
+              try {
+                const footer = document.getElementById("chatFooter");
+                if (footer) footer.style.display = "";
+              } catch (e) {
+                console.debug("show chat footer failed", e);
+              }
+            } catch (e) {
+              console.debug("hide landing CTA failed", e);
+            }
+          }
+        } catch (e) {
+          // ignore failures
+          console.log("loadProfilePhoto error", e);
+        }
+      }
+      window.addEventListener("DOMContentLoaded", loadProfilePhoto);
+
+      // Profile menu toggle & logout handling
+      // deprecated dropdown toggle left for compatibility; open modal instead
+      function toggleProfileMenu(e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        showProfileModal(e);
+      }
+
+      // Mobile toggle helper now opens the profile modal on small screens
+      function toggleMobileMenu(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        // open the full-screen profile modal on mobile
+        showProfileModal(e);
+        const btn = document.getElementById("mobileToggle");
+        if (btn) btn.setAttribute("aria-expanded", "true");
+      }
+
+      // Close modal when clicking outside its content
+      document.addEventListener("click", function (e) {
+        const modal = document.getElementById("profileModal");
+        if (!modal || modal.classList.contains("hidden")) return;
+        const dialog = document.getElementById("profileModalDialog");
+        if (dialog && (dialog === e.target || dialog.contains(e.target)))
+          return;
+        hideProfileModal();
+      });
+
+      // Logout button
+      document.addEventListener("DOMContentLoaded", function () {
+        const btn = document.getElementById("logoutBtn");
+        if (btn)
+          btn.addEventListener("click", function () {
+            console.debug(
+              "logout (desktop) clicked, navigating to /auth/logout",
+            );
+            location.replace("/auth/logout");
+          });
+        const btnMobile = document.getElementById("logoutBtnMobile");
+        if (btnMobile)
+          btnMobile.addEventListener("click", function () {
+            console.debug(
+              "logout (mobile) clicked, navigating to /auth/logout",
+            );
+            location.replace("/auth/logout");
+          });
+        const mobileToggle = document.getElementById("mobileToggle");
+        if (mobileToggle) {
+          mobileToggle.addEventListener("click", function (e) {
+            // toggle handled by inline onclick, keep aria state in sync
+            const menu = document.getElementById("mobileMenu");
+            if (menu) menu.classList.toggle("hidden");
+            const expanded = this.getAttribute("aria-expanded") === "true";
+            this.setAttribute("aria-expanded", (!expanded).toString());
+          });
+          // support touch devices
+          mobileToggle.addEventListener("touchstart", function (e) {
+            toggleMobileMenu(e);
+          });
+        }
+      });
+
+      // Mobile menu: close when clicking outside
+      document.addEventListener("click", function (e) {
+        const menu = document.getElementById("mobileMenu");
+        const toggle = document.getElementById("mobileToggle");
+        if (!menu || !toggle) return;
+        if (menu.classList.contains("hidden")) return;
+        if (
+          e.target === toggle ||
+          toggle.contains(e.target) ||
+          menu.contains(e.target)
+        )
+          return;
+        menu.classList.add("hidden");
+        toggle.setAttribute("aria-expanded", "false");
+      });
+    </script>
+    <!-- Profile modal -->
+    <div
+      id="profileModal"
+      class="hidden fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center"
+    >
+      <div
+        id="profileModalDialog"
+        class="bg-white rounded-lg shadow-lg w-80 p-4 relative"
+      >
+        <button
+          aria-label="Close"
+          onclick="hideProfileModal()"
+          class="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
+        >
+          ✕
+        </button>
+        <div class="flex flex-col items-center pt-4 pb-2">
+          <img
+            id="profileModalPhoto"
+            src=""
+            alt="Profile"
+            class="w-20 h-20 rounded-full object-cover border"
+          />
+          <div
+            id="profileModalName"
+            class="mt-3 text-sm font-medium text-gray-800"
+          ></div>
+          <div class="mt-4 w-full px-6">
+            <button
+              id="profileModalLogout"
+              class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
