@@ -145,7 +145,10 @@ def qa():
                     return jsonify({"question": question, "answer": processed, "sources": [], "used_llm": True}), 200
 
                 prompt_text = (
-                    "Answer concisely: definition, causes, coping strategies, when to seek help. "
+                    "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
+                    "Only answer questions related to neurology or mental health. "
+                    "If the user's question is outside these topics, respond politely: 'I\'m a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
+                    "Otherwise, answer concisely with a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek help. "
                     "Return cleanly formatted text.\n\nQuestion:\n" + (question or "") + "\n\nAnswer:"
                 )
                 contents = [{"role": "user", "parts": [{"text": prompt_text}]}]

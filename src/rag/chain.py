@@ -235,9 +235,10 @@ class RAGChain:
                 LLMChain = PromptTemplate = llm_factory = None
 
             prompt_template = (
-                "Provide a concise, practical answer to the user's question. "
-                "Include a brief definition, common causes or triggers if relevant, "
-                "practical coping strategies, and guidance on when to seek professional help. "
+                "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
+                "Only answer questions related to neurology or mental health. "
+                "If the user's question is outside these topics, respond politely: 'I'm a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
+                "Otherwise, provide a concise, practical answer including a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek professional help. "
                 "Be empathetic and concise. Return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
             )
 
@@ -486,9 +487,10 @@ class RAGChain:
         if (not context or len(context.strip()) < 50) and os.getenv("GEMINI_API_KEY"):
             LLMChain, PromptTemplate, llm_factory = self._try_load_langchain_llm()
             prompt_template = (
-                "Provide a concise, practical answer to the user's question. "
-                "Include a brief definition, common causes or triggers if relevant, "
-                "practical coping strategies, and guidance on when to seek professional help. "
+                "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
+                "Only answer questions related to neurology or mental health. "
+                "If the user's question is outside these topics, respond politely: 'I'm a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
+                "Otherwise, provide a concise, practical answer including a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek professional help. "
                 "Be empathetic and concise. Return cleanly formatted text.\n\nQuestion:\n{question}\n\nAnswer:"
             )
             # Try using LangChain LLMChain if available
