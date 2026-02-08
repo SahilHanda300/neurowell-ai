@@ -182,6 +182,26 @@ async function askQuestion() {
 
     if (data.severity) {
       severityContainer.innerHTML = severityBadge(data.severity);
+      // If backend marks severity as 'high' or 'severe', show emergency map
+      const sev = String(data.severity).toLowerCase();
+      if (
+        sev === "high" ||
+        sev === "severe" ||
+        sev === "urgent" ||
+        sev === "crisis"
+      ) {
+        showEmergencyMap();
+      }
+    }
+
+    // Fallback client-side severity heuristic: if question contains emergency keywords, show map
+    try {
+      const qLower = (q || "").toLowerCase();
+      if (isSevereQuery(qLower)) {
+        showEmergencyMap();
+      }
+    } catch (e) {
+      // ignore
     }
 
     const providers = data.providers || [];
@@ -404,3 +424,68 @@ questionEl.addEventListener("keydown", (e) => {
 window.addEventListener("DOMContentLoaded", async () => {
   _topics = await fetchTopics();
 });
+
+// Heuristic to detect severe/emergency queries client-side
+function isSevereQuery(lowerQ) {
+  if (!lowerQ) return false;
+  const keywords = [
+    "suicide",
+    "kill myself",
+    "end my life",
+    "self-harm",
+    "hurt myself",
+    "want to die",
+    "cant go on",
+    "can't go on",
+    "immediate help",
+    "in danger",
+    "crisis",
+    "urgent",
+    "panic attack not breathing",
+  ];
+  return keywords.some((k) => lowerQ.includes(k));
+}
+
+// Show emergency map modal. Attempts to center map on user's geolocation if available.
+function showEmergencyMap() {
+  const modal = document.getElementById("emergencyMapModal");
+  const iframe = document.getElementById("emergencyMapIframe");
+  const openLink = document.getElementById("openMapsLink");
+  if (!modal || !iframe || !openLink) return;
+  // Try geolocation to center the search
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const q = encodeURIComponent("psychology center");
+        const embedUrl = `https://www.google.com/maps?q=${q}+near+${lat},${lng}&output=embed`;
+        const openUrl = `https://www.google.com/maps/search/${q}/@${lat},${lng},13z`;
+        iframe.src = embedUrl;
+        openLink.href = openUrl;
+        modal.classList.remove("hidden");
+      },
+      (err) => {
+        // If geolocation fails/denied, fall back to generic nearby search
+        iframe.src =
+          "https://www.google.com/maps?q=psychology+center+near+me&output=embed";
+        openLink.href =
+          "https://www.google.com/maps/search/psychology+center+near+me";
+        modal.classList.remove("hidden");
+      },
+      { timeout: 3000 },
+    );
+  } else {
+    iframe.src =
+      "https://www.google.com/maps?q=psychology+center+near+me&output=embed";
+    openLink.href =
+      "https://www.google.com/maps/search/psychology+center+near+me";
+    modal.classList.remove("hidden");
+  }
+}
+
+function hideEmergencyMap() {
+  const modal = document.getElementById("emergencyMapModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+}
