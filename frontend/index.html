@@ -6,6 +6,8 @@
     <title>NeuroWell AI</title>
     <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- DOMPurify for safe HTML rendering of model output -->
+    <script src="https://unpkg.com/dompurify@2.4.0/dist/purify.min.js"></script>
   </head>
   <body class="bg-white text-gray-900">
     <!-- Full-width header -->
@@ -201,7 +203,7 @@
             </div>
             <div
               id="answerCard"
-              class="bg-gray-50 border border-gray-100 rounded-md p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"
+              class="bg-gray-50 border border-gray-100 rounded-md p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-[45vh] sm:max-h-[60vh] md:max-h-[70vh] overflow-auto"
             ></div>
 
             <!-- Sources section removed (answers shown directly) -->
@@ -229,7 +231,7 @@
           it aligns with the header/main max-width). Hidden until signed-in. -->
     <footer
       id="chatFooter"
-      style="display: none"
+      style="display: none; padding-bottom: env(safe-area-inset-bottom);"
       class="fixed bottom-0 left-0 right-0 bg-white border-t"
     >
       <div class="max-w-3xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -238,8 +240,7 @@
           <textarea
             id="question"
             rows="3"
-            class="w-full resize-none rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2 flex-grow min-w-0"
-            style="min-height:56px"
+            class="w-full resize-none rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2 flex-grow min-w-0 min-h-[56px] sm:min-h-[72px] text-sm sm:text-base"
             placeholder="Enter your question here..."
           ></textarea>
           <div
@@ -561,13 +562,13 @@
       </div>
     </div>
 
-    <!-- Emergency map modal: shown when a severe query is detected -->
+    <!-- Emergency map modal: restores UI removed earlier -->
     <div id="emergencyMapModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
       <div class="bg-white rounded-lg shadow-lg w-full max-w-3xl p-4 relative">
         <button aria-label="Close" onclick="hideEmergencyMap()" class="absolute top-2 right-2 text-gray-600 hover:text-gray-800">✕</button>
         <h3 class="text-lg font-semibold mb-2">Nearby mental health services</h3>
         <p class="text-sm text-gray-600 mb-3">If this is an emergency, contact your local emergency services right away. Below is a map of nearby psychology/mental health centres.</p>
-        <div class="w-full h-80 mb-3">
+        <div class="w-full h-64 sm:h-80 mb-3">
           <iframe id="emergencyMapIframe" class="w-full h-full border rounded" src="https://www.google.com/maps?q=psychology+center+near+me&output=embed"></iframe>
         </div>
         <div class="flex items-center justify-end gap-2">

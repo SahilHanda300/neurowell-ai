@@ -20,6 +20,30 @@ api_bp = Blueprint("api", __name__)
 logger = logging.getLogger("neurowell.api")
 
 
+def _detect_severity(*texts) -> str | None:
+    """Return 'high' if any of the provided texts contain emergency keywords."""
+    try:
+        import re
+        if not texts:
+            return None
+        pattern = re.compile(r"\b(suicid|suicide|suicidal|kill(?:ing)?\s+myself|kill\s+myself|hurt\s+myself|self-?harm|want\s+to\s+die|end\s+my\s+life)\b", re.IGNORECASE)
+        for t in texts:
+            if not t:
+                continue
+            if pattern.search(str(t)):
+                return 'high'
+    except Exception:
+        return None
+    return None
+
+
+# Note: follow-up notifications are webhook/message-only. Email fallback removed per request.
+
+
+# Follow-up webhook/message functionality removed per request.
+
+
+
 def _clean_snippet_text(text: str) -> str:
     """Conservative cleanup for snippets extracted from PDFs.
     - collapse repeated whitespace
@@ -142,7 +166,9 @@ def qa():
                         processed = postprocess_text(cached[0] or "")
                     except Exception:
                         processed = cached[0]
-                    return jsonify({"question": question, "answer": processed, "sources": [], "used_llm": True}), 200
+                    # severity detection for cached responses
+                    sev = _detect_severity(question, processed)
+                    return jsonify({"question": question, "answer": processed, "sources": [], "used_llm": True, "severity": sev}), 200
 
                 prompt_text = (
                     "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
@@ -179,7 +205,9 @@ def qa():
                                 used_llm = True
                                 llm_debug["success"] = True
                                 duration_ms = (time.time() - start) * 1000.0
-                                return jsonify({"question": question, "answer": answer, "sources": [], "used_llm": True, "llm_debug": llm_debug}), 200
+                                # severity detection (check question and answer)
+                                sev = _detect_severity(question, answer)
+                                return jsonify({"question": question, "answer": answer, "sources": [], "used_llm": True, "llm_debug": llm_debug, "severity": sev}), 200
             except Exception as e:
                 tb = traceback.format_exc()
                 logger.exception("LLM: direct client failed during generate_content or processing; falling back to RAG")
@@ -198,6 +226,21 @@ def qa():
         answer = _simple_answer(question) + f"\n\n(Note: RAG chain error: {e})"
 
     duration_ms = (time.time() - start) * 1000.0
+
+    # Basic severity detection (best-effort): check question text for emergency keywords
+    severity = None
+    try:
+        q_lower = (question or "").lower()
+        high_keywords = [
+            'suicide', 'suicidal', 'kill myself', 'hurt myself', 'self-harm',
+            'want to die', 'end my life', "i want to die", 'kill myself'
+        ]
+        for kw in high_keywords:
+            if kw in q_lower:
+                severity = 'high'
+                break
+    except Exception:
+        severity = None
 
     # Build sources list (best-effort) using retriever metadata. However,
     # if retrieved docs are low-relevance for the question, do not return
@@ -299,7 +342,7 @@ def qa():
         # auditing is best-effort; don't fail the request for audit problems
         pass
 
-    return jsonify({"question": question, "answer": answer, "sources": sources, "used_llm": used_llm, "llm_debug": llm_debug}), status
+    return jsonify({"question": question, "answer": answer, "sources": sources, "used_llm": used_llm, "llm_debug": llm_debug, "severity": severity}), status
 
 
 @api_bp.route("/audit", methods=["GET"])
@@ -508,7 +551,6 @@ def rebuild_index():
         return jsonify({"status": "index rebuilt", "doc_count": len(getattr(retriever, 'docstore', []))}), 200
     except Exception as e:
         return jsonify({"error": "failed to rebuild index", "detail": str(e)}), 500
-
 
 @api_bp.route("/debug_docstore", methods=["GET"])
 def debug_docstore():

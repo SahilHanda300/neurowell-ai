@@ -135,19 +135,47 @@ async function askQuestion() {
           ? processed.join("\n\n")
           : "Contact local support services or national helplines for help in your area.";
 
-        // If the answer looks like a numbered list (e.g. "1. ... 2. ..."), render as <ol>
-        const numberedItems = cleaned2
-          .split(/(?=\d+\.\s+)/)
-          .filter((s) => s.trim());
-        if (numberedItems.length > 1) {
-          const itemsHtml = numberedItems
-            .map((it) => {
-              // strip leading number and dot
-              const withoutNum = it.replace(/^\s*\d+\.\s*/, "");
-              return `<li>${escapeHtml(withoutNum.trim())}</li>`;
-            })
-            .join("");
-          answerCard.innerHTML = `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`;
+        // If the answer looks like a numbered list (lines starting with "1. ", "2. ", ...), render as <ol>
+        // Avoid splitting on inline decimal tokens like "2.7" by requiring line-start numbering.
+        const numberedLineRe = /(^|\n)\s*\d+\.\s+/g;
+        const numberedMatches = cleaned2.match(numberedLineRe) || [];
+        if (numberedMatches.length > 1) {
+          // extract lines that start with a digit + dot
+          const lines = cleaned2
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+          const listLines = lines.filter((l) => /^\d+\.\s+/.test(l));
+          if (listLines.length > 1) {
+            const itemsHtml = listLines
+              .map((it) => {
+                const withoutNum = it.replace(/^\s*\d+\.\s*/, "");
+                const safeInner =
+                  typeof DOMPurify !== "undefined"
+                    ? DOMPurify.sanitize(withoutNum.trim())
+                    : escapeHtml(withoutNum.trim());
+                return `<li>${safeInner}</li>`;
+              })
+              .join("");
+            const html = `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`;
+            answerCard.innerHTML =
+              typeof DOMPurify !== "undefined"
+                ? DOMPurify.sanitize(html)
+                : html;
+          } else {
+            // fallback to paragraph rendering if numbering detection failed
+            const paras = cleaned2
+              .split(/\n\n+/)
+              .map((p) => p.trim())
+              .filter(Boolean);
+            const html = paras
+              .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
+              .join("");
+            answerCard.innerHTML =
+              typeof DOMPurify !== "undefined"
+                ? DOMPurify.sanitize(html)
+                : html;
+          }
         } else {
           // support bullet-style lists (lines starting with '-', '•', or '*')
           const bulletLines = cleaned2
@@ -158,18 +186,32 @@ async function askQuestion() {
           if (isBulletList) {
             const itemsHtml = bulletLines
               .map((l) => l.replace(/^[-•\*]\s+/, ""))
-              .map((t) => `<li>${escapeHtml(t)}</li>`)
+              .map((t) => {
+                const safeInner =
+                  typeof DOMPurify !== "undefined"
+                    ? DOMPurify.sanitize(t)
+                    : escapeHtml(t);
+                return `<li>${safeInner}</li>`;
+              })
               .join("");
-            answerCard.innerHTML = `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`;
+            const html = `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`;
+            answerCard.innerHTML =
+              typeof DOMPurify !== "undefined"
+                ? DOMPurify.sanitize(html)
+                : html;
           } else {
             // Preserve single newlines as line breaks and double newlines as paragraphs
             const paras = cleaned2
               .split(/\n\n+/)
               .map((p) => p.trim())
               .filter(Boolean);
-            answerCard.innerHTML = paras
+            const html = paras
               .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
               .join("");
+            answerCard.innerHTML =
+              typeof DOMPurify !== "undefined"
+                ? DOMPurify.sanitize(html)
+                : html;
           }
         }
       } catch (e) {
@@ -182,26 +224,20 @@ async function askQuestion() {
 
     if (data.severity) {
       severityContainer.innerHTML = severityBadge(data.severity);
-      // If backend marks severity as 'high' or 'severe', show emergency map
-      const sev = String(data.severity).toLowerCase();
-      if (
-        sev === "high" ||
-        sev === "severe" ||
-        sev === "urgent" ||
-        sev === "crisis"
-      ) {
-        showEmergencyMap();
+      // If backend marks severity as 'high' or 'severe', show emergency map (client-side only)
+      try {
+        const sev = String(data.severity).toLowerCase();
+        if (
+          sev === "high" ||
+          sev === "severe" ||
+          sev === "urgent" ||
+          sev === "crisis"
+        ) {
+          showEmergencyMap();
+        }
+      } catch (e) {
+        // ignore
       }
-    }
-
-    // Fallback client-side severity heuristic: if question contains emergency keywords, show map
-    try {
-      const qLower = (q || "").toLowerCase();
-      if (isSevereQuery(qLower)) {
-        showEmergencyMap();
-      }
-    } catch (e) {
-      // ignore
     }
 
     const providers = data.providers || [];
@@ -489,3 +525,5 @@ function hideEmergencyMap() {
   if (!modal) return;
   modal.classList.add("hidden");
 }
+
+// Emergency follow-up UI removed.
