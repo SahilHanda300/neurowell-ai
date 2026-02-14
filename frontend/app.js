@@ -164,3 +164,30 @@ questionEl.addEventListener("keydown", (e) => {
     askQuestion();
   }
 });
+
+// Privacy note visibility: hide when the question box is visible
+function updatePrivacyNoteVisibility() {
+  const privacy = document.getElementById("privacyNote");
+  if (!privacy) return;
+
+  // Consider the question box visible when it's rendered and not display:none
+  const q = document.getElementById("question");
+  const isVisible = !!(
+    q && q.offsetParent !== null && getComputedStyle(q).display !== "none"
+  );
+
+  privacy.style.display = isVisible ? "none" : "";
+}
+
+// Observe footer attribute changes (style/class) to detect visibility toggles
+const chatFooter = document.getElementById("chatFooter");
+if (chatFooter) {
+  const mo = new MutationObserver(updatePrivacyNoteVisibility);
+  mo.observe(chatFooter, { attributes: true, attributeFilter: ["style", "class"] });
+}
+
+// Also run on load and on window events that may change layout
+window.addEventListener("load", updatePrivacyNoteVisibility);
+window.addEventListener("resize", updatePrivacyNoteVisibility);
+// Run once now
+updatePrivacyNoteVisibility();

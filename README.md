@@ -30,7 +30,7 @@ This README documents what exists in the repo and how to run and develop it loca
 - Minimal UI: single-page Tailwind layout, fixed bottom input bar, scrollable answer card for long answers.
 - Sanitization: model HTML is sanitized on the client using DOMPurify before insertion.
 - Severity detection: a centralized regex-based detector runs on question+answer server-side and returns a `severity` field in `/api/qa` responses; the frontend may auto-open the emergency modal when severity is high.
-- Followups: server-side followup webhooks and emails were removed; emergency UX is client-only per project scope.
+- Followups: Emergency UX is client-only per project scope.
 - LLM imports: direct LLM clients are guarded during import to avoid install-time failures; RAG fallback is used if the direct client is unavailable.
 
 ## Requirements
