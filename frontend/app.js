@@ -9,6 +9,84 @@ const providersSection = document.getElementById("providersSection");
 const providersList = document.getElementById("providersList");
 // sources UI removed
 
+// Lightweight markdown-like renderer: handle headings, numbered lists, bullet lists, bold and italics.
+function renderMarkdownLite(text) {
+  if (!text && text !== 0) return "";
+  // normalize
+  let t = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // split into lines and process blocks
+  const lines = t.split("\n");
+  const parts = [];
+  let i = 0;
+
+  const inlineFmt = (s) => {
+    if (!s) return "";
+    let out = s;
+    // bold: **text** or __text__
+    out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/__(.+?)__/g, "<strong>$1</strong>");
+    // italic: *text* or _text_
+    out = out.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    out = out.replace(/_(.+?)_/g, "<em>$1</em>");
+    return out;
+  };
+
+  while (i < lines.length) {
+    let line = (lines[i] || "").trim();
+    if (!line) {
+      i++;
+      continue;
+    }
+    // headings (#, ##, ...)
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const content = escapeHtml(h[2]);
+      parts.push(`<h3 class="text-sm font-semibold text-gray-800">${inlineFmt(content)}</h3>`);
+      i++;
+      continue;
+    }
+
+    // numbered list
+    if (/^\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].trim().replace(/^\s*\d+\.\s+/, ""));
+        i++;
+      }
+      const itemsHtml = items
+        .map((it) => `<li>${inlineFmt(escapeHtml(it))}</li>`)
+        .join("");
+      parts.push(`<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`);
+      continue;
+    }
+
+    // bullet list (-, *, •, +)
+    if (/^[-•\*\+]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-•\*\+]\s+/.test(lines[i])) {
+        items.push(lines[i].trim().replace(/^\s*[-•\*\+]\s+/, ""));
+        i++;
+      }
+      const itemsHtml = items
+        .map((it) => `<li>${inlineFmt(escapeHtml(it))}</li>`)
+        .join("");
+      parts.push(`<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`);
+      continue;
+    }
+
+    // paragraph (collect until blank line)
+    let para = line;
+    i++;
+    while (i < lines.length && (lines[i] || "").trim()) {
+      para += " " + lines[i].trim();
+      i++;
+    }
+    parts.push(`<p class="text-sm text-gray-700">${inlineFmt(escapeHtml(para))}</p>`);
+  }
+
+  return parts.join("");
+}
+
 function clearResult() {
   resultEl.classList.add("hidden");
   if (introEl) introEl.classList.remove("hidden");
@@ -72,148 +150,8 @@ async function askQuestion() {
       data.answer || data.response || data.result || JSON.stringify(data);
     if (typeof answer === "string") {
       try {
-        // preserve basic markdown (bold/italic) but render safely:
-        // 1) escape HTML, 2) convert **bold** and *italic* into tags, 3) convert newlines to paragraphs
-        let escaped = escapeHtml(answer);
-        // convert bold (**text**) then italics (*text*) — non-greedy
-        let md = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-        md = md.replace(/\*(.+?)\*/g, "<em>$1</em>");
-        // normalize newlines
-        md = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-        // operate on a normalized variable `cleaned`
-        let cleaned = md;
-        // fix cases where sentences run together without a space after punctuation
-        cleaned = cleaned.replace(
-          /([\.\?!])([A-Z0-9"'\u2018\u201C])/g,
-          "$1 $2",
-        );
-        // if there are no explicit newlines and the text is long, split into
-        // sentences and make them paragraphs to improve readability
-        if (!/\n/.test(cleaned) && cleaned.length > 200) {
-          const sentences = cleaned.match(
-            /[^\.\?!]+[\.\?!]+["']?|[^\.\?!]+$/g,
-          ) || [cleaned];
-          cleaned = sentences
-            .map((s) => s.trim())
-            .filter(Boolean)
-            .join("\n\n");
-        }
-
-        // Remove any lines that contain URLs or domain-like tokens (avoid showing
-        // state/country-specific links) and redact location-specific lines by
-        // replacing them with a single generic note. Then rejoin paragraphs.
-        const rawLines = cleaned
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
-        let sawGeneric = false;
-        const processed = rawLines
-          .map((l) => {
-            // drop URL/domain lines entirely
-            if (
-              /https?:\/\//i.test(l) ||
-              /\b\S+\.(com|org|uk|gov|net|edu)\b/i.test(l)
-            ) {
-              return null;
-            }
-            // basic heuristic for location/place lines (directions, county/city keywords)
-            const locRe =
-              /\b(North|South|East|West|Central|Upper|Lower|County|Region|Province|State|Cumbria|shire|Borough|City|Town|District)\b/i;
-            const placeSuffixRe =
-              /\b[A-Z][a-z]+(?:\s+(County|Cumbria|shire|City|Town|Borough|District))\b/;
-            if (locRe.test(l) || placeSuffixRe.test(l)) {
-              if (!sawGeneric) {
-                sawGeneric = true;
-                return "Contact local support services or national helplines for help in your area.";
-              }
-              return null;
-            }
-            return l;
-          })
-          .filter(Boolean);
-        const cleaned2 = processed.length
-          ? processed.join("\n\n")
-          : "Contact local support services or national helplines for help in your area.";
-
-        // If the answer looks like a numbered list (lines starting with "1. ", "2. ", ...), render as <ol>
-        // Avoid splitting on inline decimal tokens like "2.7" by requiring line-start numbering.
-        const numberedLineRe = /(^|\n)\s*\d+\.\s+/g;
-        const numberedMatches = cleaned2.match(numberedLineRe) || [];
-        if (numberedMatches.length > 1) {
-          // extract lines that start with a digit + dot
-          const lines = cleaned2
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean);
-          const listLines = lines.filter((l) => /^\d+\.\s+/.test(l));
-          if (listLines.length > 1) {
-            const itemsHtml = listLines
-              .map((it) => {
-                const withoutNum = it.replace(/^\s*\d+\.\s*/, "");
-                const safeInner =
-                  typeof DOMPurify !== "undefined"
-                    ? DOMPurify.sanitize(withoutNum.trim())
-                    : escapeHtml(withoutNum.trim());
-                return `<li>${safeInner}</li>`;
-              })
-              .join("");
-            const html = `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`;
-            answerCard.innerHTML =
-              typeof DOMPurify !== "undefined"
-                ? DOMPurify.sanitize(html)
-                : html;
-          } else {
-            // fallback to paragraph rendering if numbering detection failed
-            const paras = cleaned2
-              .split(/\n\n+/)
-              .map((p) => p.trim())
-              .filter(Boolean);
-            const html = paras
-              .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
-              .join("");
-            answerCard.innerHTML =
-              typeof DOMPurify !== "undefined"
-                ? DOMPurify.sanitize(html)
-                : html;
-          }
-        } else {
-          // support bullet-style lists (lines starting with '-', '•', or '*')
-          const bulletLines = cleaned2
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean);
-          const isBulletList = bulletLines.every((l) => /^[-•\*]\s+/.test(l));
-          if (isBulletList) {
-            const itemsHtml = bulletLines
-              .map((l) => l.replace(/^[-•\*]\s+/, ""))
-              .map((t) => {
-                const safeInner =
-                  typeof DOMPurify !== "undefined"
-                    ? DOMPurify.sanitize(t)
-                    : escapeHtml(t);
-                return `<li>${safeInner}</li>`;
-              })
-              .join("");
-            const html = `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`;
-            answerCard.innerHTML =
-              typeof DOMPurify !== "undefined"
-                ? DOMPurify.sanitize(html)
-                : html;
-          } else {
-            // Preserve single newlines as line breaks and double newlines as paragraphs
-            const paras = cleaned2
-              .split(/\n\n+/)
-              .map((p) => p.trim())
-              .filter(Boolean);
-            const html = paras
-              .map((p) => `<p class="text-sm text-gray-700">${p}</p>`)
-              .join("");
-            answerCard.innerHTML =
-              typeof DOMPurify !== "undefined"
-                ? DOMPurify.sanitize(html)
-                : html;
-          }
-        }
+        const html = renderMarkdownLite(answer);
+        answerCard.innerHTML = typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : html;
       } catch (e) {
         console.error("answer rendering error", e);
         answerCard.textContent = answer;
