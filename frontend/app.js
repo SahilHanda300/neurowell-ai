@@ -22,10 +22,18 @@ function renderMarkdownLite(text) {
   const inlineFmt = (s) => {
     if (!s) return "";
     let out = s;
+    // If the line starts with a label like "Common Causes:" make it bold
+    out = out.replace(
+      /^([A-Z][A-Za-z0-9\s\-'()]{0,80}):\s*/,
+      "<strong>$1:</strong> ",
+    );
+    // single-asterisk or single-underscore labels followed by a colon (e.g. "*Topic:*") -> bold
+    out = out.replace(/^\*(.+?)\*:\s*/, "<strong>$1:</strong> ");
+    out = out.replace(/^_(.+?)_:\s*/, "<strong>$1:</strong> ");
     // bold: **text** or __text__
     out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     out = out.replace(/__(.+?)__/g, "<strong>$1</strong>");
-    // italic: *text* or _text_
+    // italic: *text* or _text_ (handled after label/bold detection)
     out = out.replace(/\*(.+?)\*/g, "<em>$1</em>");
     out = out.replace(/_(.+?)_/g, "<em>$1</em>");
     return out;
