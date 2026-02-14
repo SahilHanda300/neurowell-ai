@@ -23,7 +23,7 @@ This README documents what exists in the repo and how to run and develop it loca
   - `src/auth/` — Google OIDC routes (`/auth/google/login`, `/auth/google/callback`, `/auth/me`).
   - `src/rag/` — RAG chain, retriever, and document loaders (PDF/OCR helpers).
 - `requirements.txt` — Python dependencies for the backend.
-- `Procfile`, `.render.yaml`, `DEPLOY.md` — deployment artifacts (Render / gunicorn hints).
+- `Procfile`, `.render.yaml`.
 
 **Key behaviors and design decisions**
 
