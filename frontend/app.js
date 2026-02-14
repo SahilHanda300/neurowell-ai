@@ -41,7 +41,9 @@ function renderMarkdownLite(text) {
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     if (h) {
       const content = escapeHtml(h[2]);
-      parts.push(`<h3 class="text-sm font-semibold text-gray-800">${inlineFmt(content)}</h3>`);
+      parts.push(
+        `<h3 class="text-sm font-semibold text-gray-800">${inlineFmt(content)}</h3>`,
+      );
       i++;
       continue;
     }
@@ -56,7 +58,9 @@ function renderMarkdownLite(text) {
       const itemsHtml = items
         .map((it) => `<li>${inlineFmt(escapeHtml(it))}</li>`)
         .join("");
-      parts.push(`<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`);
+      parts.push(
+        `<ol class="list-decimal list-inside text-sm text-gray-700">${itemsHtml}</ol>`,
+      );
       continue;
     }
 
@@ -70,7 +74,9 @@ function renderMarkdownLite(text) {
       const itemsHtml = items
         .map((it) => `<li>${inlineFmt(escapeHtml(it))}</li>`)
         .join("");
-      parts.push(`<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`);
+      parts.push(
+        `<ul class="list-disc list-inside text-sm text-gray-700">${itemsHtml}</ul>`,
+      );
       continue;
     }
 
@@ -81,7 +87,9 @@ function renderMarkdownLite(text) {
       para += " " + lines[i].trim();
       i++;
     }
-    parts.push(`<p class="text-sm text-gray-700">${inlineFmt(escapeHtml(para))}</p>`);
+    parts.push(
+      `<p class="text-sm text-gray-700">${inlineFmt(escapeHtml(para))}</p>`,
+    );
   }
 
   return parts.join("");
@@ -151,7 +159,8 @@ async function askQuestion() {
     if (typeof answer === "string") {
       try {
         const html = renderMarkdownLite(answer);
-        answerCard.innerHTML = typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : html;
+        answerCard.innerHTML =
+          typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : html;
       } catch (e) {
         console.error("answer rendering error", e);
         answerCard.textContent = answer;
