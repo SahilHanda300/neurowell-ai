@@ -6,8 +6,6 @@
     <title>NeuroWell AI</title>
     <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- DOMPurify for safe HTML rendering of model output -->
-    <script src="https://unpkg.com/dompurify@2.4.0/dist/purify.min.js"></script>
   </head>
   <body class="bg-white text-gray-900">
     <!-- Full-width header -->
@@ -262,7 +260,7 @@
       </div>
     </footer>
 
-    <script src="./app.js"></script>
+    
     <script>
       // Profile modal control
       function showProfileModal(e) {
@@ -576,5 +574,10 @@
         </div>
       </div>
     </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="./app.js"></script>
   </body>
 </html>
+
