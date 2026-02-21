@@ -1,4 +1,5 @@
 const askBtn = document.getElementById("askBtn");
+const askSpinner = document.getElementById("askSpinner");
 const questionEl = document.getElementById("question");
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
@@ -34,7 +35,7 @@ function severityBadge(sev) {
 
   return `
     <span class="inline-block px-2 py-1 text-xs font-semibold text-white rounded ${color}">
-      ${escapeHtml(sev)}
+      ${escapeHtml(String(sev).toUpperCase())}
     </span>
   `;
 }
@@ -49,6 +50,9 @@ async function askQuestion() {
 
   statusEl.textContent = "Querying…";
   askBtn.setAttribute("disabled", "disabled");
+  if (askSpinner) {
+    askSpinner.classList.remove("hidden");
+  }
 
   try {
     const resp = await fetch("/api/qa", {
@@ -121,6 +125,9 @@ async function askQuestion() {
     statusEl.textContent = "Request failed. Please try again.";
   } finally {
     askBtn.removeAttribute("disabled");
+    if (askSpinner) {
+      askSpinner.classList.add("hidden");
+    }
   }
 }
 
