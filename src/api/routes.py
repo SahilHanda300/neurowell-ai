@@ -1,5 +1,5 @@
 import time
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, send_from_directory
 import os
 from pathlib import Path
 import logging
@@ -35,6 +35,10 @@ def _detect_severity(*texts) -> str | None:
     except Exception:
         return None
     return None
+
+
+
+
 
 
 # Note: follow-up notifications are webhook/message-only. Email fallback removed per request.
@@ -121,8 +125,154 @@ def qa():
 
     data = request.get_json(silent=True) or {}
     question = data.get("question") if isinstance(data, dict) else None
+    # Optional chat history passed from the client to preserve context between turns.
+    # Expected format: [{"role":"user"|"assistant","content":"..."}, ...]
+    history = []
+    try:
+        if isinstance(data, dict) and data.get("history"):
+            history = data.get("history") or []
+            if not isinstance(history, list):
+                history = []
+    except Exception:
+        history = []
+
     if not question:
         return jsonify({"error": "missing question"}), 400
+
+    # Prefer cookie-backed session conversation stored in `session['conversation']`.
+    session_conv = session.get("conversation") or []
+    effective_history = session_conv if session_conv else history
+
+    # Build an effective question that includes prior visible conversation so
+    # the LLM/RAG can condition on earlier turns for follow-up questions.
+    effective_question = question
+    try:
+        if effective_history:
+            parts = []
+            for h in effective_history:
+                if not h:
+                    continue
+                if isinstance(h, dict):
+                    role = str(h.get("role") or "").lower()
+                    c = str(h.get("content") or "").strip()
+                    if role == "assistant":
+                        parts.append(f"Assistant: {c}")
+                    else:
+                        parts.append(f"User: {c}")
+                else:
+                    parts.append(str(h))
+            if parts:
+                history_text = "Conversation so far:\n" + "\n".join(parts) + "\n\n"
+                effective_question = history_text + "User: " + (question or "")
+    except Exception:
+        effective_question = question
+
+    # Simple greeting pre-check: detect short greetings and reply locally
+    def _is_simple_greeting(s: str) -> bool:
+        try:
+            import re
+            if not s:
+                return False
+            s2 = s.strip().lower()
+            # only treat as a greeting when it's short
+            if len(s2.split()) > 3:
+                return False
+            return bool(re.match(r'^(hi|hello|hey|hiya|good morning|good afternoon|good evening)([!.,\s]*)$', s2))
+        except Exception:
+            return False
+
+    if _is_simple_greeting(question):
+        reply = (
+            "Hi — I can help with neurology or mental-health questions. "
+            "Ask about symptoms, coping strategies, or when to seek help."
+        )
+        # persist to session (best-effort)
+        try:
+            sc = session.get("conversation") or []
+            sc.append({"role": "user", "content": question})
+            sc.append({"role": "assistant", "content": reply})
+            session["conversation"] = sc
+        except Exception:
+            pass
+
+        resp_body = {
+            "question": question,
+            "answer": reply,
+            "sources": [],
+            "used_llm": False,
+            "llm_debug": {"attempted": False, "success": False, "candidates_present": False, "error": None},
+            "severity": None,
+            "conversation": session.get("conversation") or [],
+        }
+        return jsonify(resp_body), 200
+
+    # Short follow-up handler: if the user asks a brief clarifying follow-up
+    # (e.g., "Is it a matter of concern?", "Should I be worried?"), prefer
+    # to answer locally using the previous assistant turn when available so
+    # the LLM doesn't incorrectly classify the short question as out-of-scope.
+    def _is_short_followup(s: str) -> bool:
+        try:
+            if not s:
+                return False
+            s2 = s.strip().lower()
+            # treat short questions (<=6 words) or common follow-up phrases
+            if len(s2.split()) <= 6:
+                return bool(
+                    __import__("re").search(r"\b(is it|is this|should i|am i|matter of concern|worry|concern)\b", s2)
+                )
+            return False
+        except Exception:
+            return False
+
+    try:
+        if _is_short_followup(question) and effective_history:
+            # find the most recent assistant message in history
+            last_assistant = None
+            for h in reversed(effective_history):
+                if isinstance(h, dict) and (h.get("role") or "").lower() == "assistant":
+                    last_assistant = str(h.get("content") or "").strip()
+                    break
+
+            if last_assistant:
+                # craft a concise local follow-up reply that references the
+                # prior assistant content and offers clear next steps.
+                snippet = last_assistant
+                if len(snippet) > 400:
+                    snippet = snippet[:400].rsplit(".", 1)[0] + "..."
+
+                followup_reply = (
+                    f"Based on the previous answer: {snippet} "
+                    "If you have thoughts of self-harm, feel unable to cope, "
+                    "or are concerned for your immediate safety, please seek professional help or contact emergency services right away. "
+                    "If you're unsure, speaking to a doctor or mental health professional is recommended."
+                )
+
+                # severity detection considering both the short follow-up and
+                # the prior assistant content
+                sev = _detect_severity(question, last_assistant)
+
+                # persist to session conversation (best-effort)
+                try:
+                    sc = session.get("conversation") or []
+                    sc.append({"role": "user", "content": question})
+                    sc.append({"role": "assistant", "content": followup_reply})
+                    session["conversation"] = sc
+                except Exception:
+                    pass
+
+                resp_body = {
+                    "question": question,
+                    "answer": followup_reply,
+                    "sources": [],
+                    "used_llm": False,
+                    "llm_debug": {"attempted": False, "success": False, "candidates_present": False, "error": None},
+                    "severity": sev,
+                    "conversation": session.get("conversation") or [],
+                }
+                return jsonify(resp_body), 200
+    except Exception:
+        # best-effort; fall back to normal processing
+        pass
 
     start = time.time()
     status = 200
@@ -175,7 +325,7 @@ def qa():
                     "Only answer questions related to neurology or mental health. "
                     "If the user's question is outside these topics, respond politely: 'I\'m a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
                     "Otherwise, answer concisely with a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek help. "
-                    "Return cleanly formatted text.\n\nQuestion:\n" + (question or "") + "\n\nAnswer:"
+                    "Return cleanly formatted text.\n\nQuestion:\n" + (effective_question or question or "") + "\n\nAnswer:"
                 )
                 contents = [{"role": "user", "parts": [{"text": prompt_text}]}]
                 # Request a smaller response to conserve quota
@@ -219,7 +369,11 @@ def qa():
             pass
     try:
         chain = RAGChain()
-        answer = chain.answer(question)
+        # Pass the effective question (which may include prior history) to the RAG chain
+        try:
+            answer = chain.answer(effective_question)
+        except Exception:
+            answer = chain.answer(question)
     except Exception as e:
         status = 500
         error_msg = str(e)
@@ -228,17 +382,23 @@ def qa():
     duration_ms = (time.time() - start) * 1000.0
 
     # Basic severity detection (best-effort): check question text for emergency keywords
+    # Basic severity detection (best-effort): check question and the
+    # generated answer (or other conversation text) for emergency keywords.
     severity = None
     try:
-        q_lower = (question or "").lower()
-        high_keywords = [
-            'suicide', 'suicidal', 'kill myself', 'hurt myself', 'self-harm',
-            'want to die', 'end my life', "i want to die", 'kill myself'
-        ]
-        for kw in high_keywords:
-            if kw in q_lower:
-                severity = 'high'
-                break
+        # Prefer centralized detector which accepts multiple texts
+        severity = _detect_severity(question, answer)
+        # Fallback: conservative check on the question text only
+        if not severity:
+            q_lower = (question or "").lower()
+            high_keywords = [
+                'suicide', 'suicidal', 'kill myself', 'hurt myself', 'self-harm',
+                'want to die', 'end my life', "i want to die", 'kill myself'
+            ]
+            for kw in high_keywords:
+                if kw in q_lower:
+                    severity = 'high'
+                    break
     except Exception:
         severity = None
 
@@ -251,7 +411,9 @@ def qa():
     sources = []
     try:
         if chain is not None and getattr(chain, "retriever", None) is not None:
-            docs = chain.retriever.get_top_k(question, k=4) or []
+            # Use effective_question for retrieval so results reflect prior context
+            query_for_retriever = locals().get("effective_question") or question
+            docs = chain.retriever.get_top_k(query_for_retriever, k=4) or []
 
             # quick relevance scoring: fraction of meaningful question tokens
             # that appear in any retrieved text or filename
@@ -342,7 +504,54 @@ def qa():
         # auditing is best-effort; don't fail the request for audit problems
         pass
 
-    return jsonify({"question": question, "answer": answer, "sources": sources, "used_llm": used_llm, "llm_debug": llm_debug, "severity": severity}), status
+    # Persist conversation in the Flask session (cookie-backed) — best-effort.
+    try:
+        sc = session.get("conversation") or []
+        sc.append({"role": "user", "content": question})
+        sc.append({"role": "assistant", "content": answer})
+        session["conversation"] = sc
+    except Exception:
+        pass
+
+    resp_body = {"question": question, "answer": answer, "sources": sources, "used_llm": used_llm, "llm_debug": llm_debug, "severity": severity}
+    try:
+        resp_body["conversation"] = session.get("conversation") or []
+    except Exception:
+        resp_body["conversation"] = []
+
+    return jsonify(resp_body), status
+
+
+@api_bp.route("/clear_conversation", methods=["POST"])
+def clear_conversation():
+    """Clear the stored conversation for the current session (best-effort)."""
+    try:
+        session.pop("conversation", None)
+        # also clear any client-provided history stored in session helper keys
+        session.pop("_session_id", None)
+    except Exception:
+        pass
+    return jsonify({"ok": True}), 200
+
+
+@api_bp.route("/conversation", methods=["GET"])
+def get_conversation():
+    """Return the stored conversation for this session (best-effort)."""
+    # Require authenticated user session
+    def _allow_unauth_local():
+        v = os.getenv("ALLOW_UNAUTH_LOCAL")
+        if not v:
+            return False
+        return str(v).lower() in ("1", "true", "yes")
+
+    if not session.get('user') and not _allow_unauth_local():
+        return jsonify({"error": "authentication required"}), 401
+
+    try:
+        conv = session.get("conversation") or []
+        return jsonify({"conversation": conv}), 200
+    except Exception as e:
+        return jsonify({"error": "failed to read conversation", "detail": str(e)}), 500
 
 
 @api_bp.route("/audit", methods=["GET"])

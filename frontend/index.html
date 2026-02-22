@@ -199,10 +199,7 @@
               <h2 class="text-lg font-semibold">Answer</h2>
               <div id="severityContainer"></div>
             </div>
-            <div
-              id="answerCard"
-              class="bg-gray-50 border border-gray-100 rounded-md p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-[45vh] sm:max-h-[60vh] md:max-h-[70vh] overflow-auto"
-            ></div>
+            <div id="chatMessages" class="space-y-4 bg-gray-50 border border-gray-100 rounded-md p-4 text-sm text-gray-700 max-h-[45vh] sm:max-h-[60vh] md:max-h-[70vh] overflow-auto"></div>
 
             <!-- Sources section removed (answers shown directly) -->
             <div id="providersSection" class="mt-4 hidden">
@@ -234,7 +231,7 @@
     >
       <div class="max-w-3xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <label for="question" class="sr-only">Question</label>
-        <div class="relative flex-1 min-w-0 w-full">
+          <div class="relative flex-1 min-w-0 w-full">
           <textarea
             id="question"
             rows="3"
@@ -261,6 +258,13 @@
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
             </svg>
             <span>Ask</span>
+          </button>
+          <button
+            id="clearBtn"
+            class="inline-flex items-center px-3 sm:px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+            title="Clear history"
+          >
+            Clear History
           </button>
         </div>
       </div>
@@ -577,6 +581,18 @@
         </div>
         <div class="flex items-center justify-end gap-2">
           <a id="openMapsLink" href="https://www.google.com/maps/search/psychology+center+near+me" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-2 bg-sky-600 text-white rounded">Open in Google Maps</a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Clear conversation confirmation modal (mobile-friendly) -->
+    <div id="confirmClearModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+      <div class="bg-white rounded-lg shadow-lg w-full max-w-sm mx-4 p-4">
+        <h3 class="text-lg font-semibold mb-2">Clear history?</h3>
+        <p class="text-sm text-gray-600 mb-4">This will remove the current conversation history from your session and cannot be undone. Do you want to continue?</p>
+        <div class="flex items-center justify-end gap-2">
+          <button id="cancelClearBtn" class="px-3 py-2 bg-white border rounded-md text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button id="confirmClearBtn" class="px-3 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">Clear History</button>
         </div>
       </div>
     </div>
