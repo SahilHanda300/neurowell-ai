@@ -26,6 +26,7 @@ _DB_ENGINE_CACHE = None
 _DB_ENGINE_INITIALIZED = False
 _DB_ENGINE_LAST_FAILURE_AT = 0.0
 _DB_ENGINE_RETRY_SECONDS = int(os.getenv("DB_ENGINE_RETRY_SECONDS", "20"))
+_DB_ENGINE_LAST_ERROR = None
 
 
 def _allow_unauth_local() -> bool:
@@ -95,7 +96,7 @@ def _parse_adonet_to_engine(conn_str: str):
 
 
 def _build_neurowell_db_engine():
-    global _DB_ENGINE_CACHE, _DB_ENGINE_INITIALIZED, _DB_ENGINE_LAST_FAILURE_AT
+    global _DB_ENGINE_CACHE, _DB_ENGINE_INITIALIZED, _DB_ENGINE_LAST_FAILURE_AT, _DB_ENGINE_LAST_ERROR
 
     if _DB_ENGINE_INITIALIZED and _DB_ENGINE_CACHE is not None:
         return _DB_ENGINE_CACHE
@@ -111,6 +112,7 @@ def _build_neurowell_db_engine():
     if not db_url:
         _DB_ENGINE_INITIALIZED = True
         _DB_ENGINE_CACHE = None
+        _DB_ENGINE_LAST_ERROR = "DATABASE_URL/DATABASE_URI is not set"
         return None
 
     stripped = db_url.strip()
@@ -130,11 +132,13 @@ def _build_neurowell_db_engine():
 
         _DB_ENGINE_CACHE = engine
         _DB_ENGINE_LAST_FAILURE_AT = 0.0
+        _DB_ENGINE_LAST_ERROR = None
         return _DB_ENGINE_CACHE
     except Exception as exc:
         logger.warning("Database engine unavailable; DB-backed features disabled: %s", exc)
         _DB_ENGINE_CACHE = None
         _DB_ENGINE_LAST_FAILURE_AT = time.time()
+        _DB_ENGINE_LAST_ERROR = str(exc)
         return None
     finally:
         _DB_ENGINE_INITIALIZED = True
@@ -902,7 +906,9 @@ def db_health():
                     "ok": False,
                     "db": "unavailable",
                     "drivers": pyodbc.drivers(),
+                    "has_database_uri": bool(os.getenv("DATABASE_URL") or os.getenv("DATABASE_URI")),
                     "reason": "engine unavailable",
+                    "detail": _DB_ENGINE_LAST_ERROR,
                 }
             ), 503
 
