@@ -73,44 +73,46 @@ def _normalize_sql_server_host(raw_server: str) -> str:
 def _normalize_odbc_connect_in_url(db_url: str) -> str:
     """Normalize Server/Data Source inside URL-encoded odbc_connect strings."""
     import urllib.parse
+    marker = "odbc_connect="
+    idx = db_url.lower().find(marker)
+    if idx < 0:
+        return db_url
 
-    parsed = urllib.parse.urlsplit(db_url)
-    query_pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    start = idx + len(marker)
+    amp = db_url.find("&", start)
+    end = len(db_url) if amp < 0 else amp
+
+    encoded_value = db_url[start:end]
+    try:
+        odbc_decoded = urllib.parse.unquote_plus(encoded_value)
+    except Exception:
+        return db_url
+
     changed = False
-    out_pairs = []
-
-    for key, value in query_pairs:
-        if key.lower() != "odbc_connect":
-            out_pairs.append((key, value))
+    rebuilt_parts = []
+    for part in odbc_decoded.split(";"):
+        p = part.strip()
+        if not p or "=" not in p:
+            if p:
+                rebuilt_parts.append(p)
             continue
-
-        odbc_decoded = urllib.parse.unquote_plus(value)
-        parts = []
-        for part in odbc_decoded.split(";"):
-            p = part.strip()
-            if not p or "=" not in p:
-                if p:
-                    parts.append(p)
-                continue
-            k, _, v = p.partition("=")
-            kl = k.strip().lower()
-            vv = v.strip()
-            if kl in ("server", "data source"):
-                normalized = _normalize_sql_server_host(vv)
-                if normalized != vv:
-                    changed = True
-                parts.append(f"{k.strip()}={normalized}")
-            else:
-                parts.append(f"{k.strip()}={vv}")
-
-        rebuilt = ";".join(parts)
-        out_pairs.append((key, urllib.parse.quote_plus(rebuilt)))
+        k, _, v = p.partition("=")
+        kk = k.strip()
+        vv = v.strip()
+        if kk.lower() in ("server", "data source"):
+            normalized = _normalize_sql_server_host(vv)
+            if normalized != vv:
+                changed = True
+            rebuilt_parts.append(f"{kk}={normalized}")
+        else:
+            rebuilt_parts.append(f"{kk}={vv}")
 
     if not changed:
         return db_url
 
-    rebuilt_query = "&".join(f"{k}={v}" for k, v in out_pairs)
-    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, rebuilt_query, parsed.fragment))
+    rebuilt_odbc = ";".join(rebuilt_parts)
+    encoded_rebuilt = urllib.parse.quote_plus(rebuilt_odbc)
+    return db_url[:start] + encoded_rebuilt + db_url[end:]
 
 
 def _parse_adonet_to_engine(conn_str: str):
