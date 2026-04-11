@@ -46,6 +46,73 @@ def _current_username() -> str | None:
     return None
 
 
+def _normalize_sql_server_host(raw_server: str) -> str:
+    """Normalize SQL Server host to Azure FQDN when only short name is provided."""
+    server = (raw_server or "").strip()
+    if not server:
+        return server
+
+    if server.lower().startswith("tcp:"):
+        server = server[4:]
+
+    host = server
+    port = "1433"
+    if "," in server:
+        host, _, maybe_port = server.partition(",")
+        host = host.strip()
+        maybe_port = maybe_port.strip()
+        if maybe_port:
+            port = maybe_port
+
+    if "." not in host:
+        host = f"{host}.database.windows.net"
+
+    return f"{host},{port}"
+
+
+def _normalize_odbc_connect_in_url(db_url: str) -> str:
+    """Normalize Server/Data Source inside URL-encoded odbc_connect strings."""
+    import urllib.parse
+
+    parsed = urllib.parse.urlsplit(db_url)
+    query_pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    changed = False
+    out_pairs = []
+
+    for key, value in query_pairs:
+        if key.lower() != "odbc_connect":
+            out_pairs.append((key, value))
+            continue
+
+        odbc_decoded = urllib.parse.unquote_plus(value)
+        parts = []
+        for part in odbc_decoded.split(";"):
+            p = part.strip()
+            if not p or "=" not in p:
+                if p:
+                    parts.append(p)
+                continue
+            k, _, v = p.partition("=")
+            kl = k.strip().lower()
+            vv = v.strip()
+            if kl in ("server", "data source"):
+                normalized = _normalize_sql_server_host(vv)
+                if normalized != vv:
+                    changed = True
+                parts.append(f"{k.strip()}={normalized}")
+            else:
+                parts.append(f"{k.strip()}={vv}")
+
+        rebuilt = ";".join(parts)
+        out_pairs.append((key, urllib.parse.quote_plus(rebuilt)))
+
+    if not changed:
+        return db_url
+
+    rebuilt_query = "&".join(f"{k}={v}" for k, v in out_pairs)
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, rebuilt_query, parsed.fragment))
+
+
 def _parse_adonet_to_engine(conn_str: str):
     """Convert an ADO.NET connection string into a SQLAlchemy mssql+pyodbc Engine."""
     import urllib.parse
@@ -60,7 +127,7 @@ def _parse_adonet_to_engine(conn_str: str):
         key, _, val = part.partition("=")
         parts[key.strip().lower()] = val.strip()
 
-    server = parts.get("server", parts.get("data source", "")).lstrip("tcp:").strip()
+    server = _normalize_sql_server_host(parts.get("server", parts.get("data source", "")))
     database = parts.get("initial catalog", parts.get("database", "neurowell-db"))
     uid = parts.get("user id", parts.get("uid", ""))
     pwd = parts.get("password", parts.get("pwd", ""))
@@ -123,7 +190,8 @@ def _build_neurowell_db_engine():
         else:
             # Use the URL as-is — the database is already encoded inside the odbc_connect
             # query parameter. Running make_url()+str() can corrupt the percent-encoding.
-            engine = create_engine(stripped)
+            normalized = _normalize_odbc_connect_in_url(stripped)
+            engine = create_engine(normalized)
 
         # Validate connectivity once so missing-driver/runtime issues degrade
         # gracefully to DB-disabled mode instead of repeated request-time failures.
