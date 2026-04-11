@@ -20,6 +20,11 @@ _QA_CACHE = {}
 api_bp = Blueprint("api", __name__)
 logger = logging.getLogger("neurowell.api")
 
+# Cache the DB engine so missing-driver failures are handled once per process
+# instead of emitting noisy traceback logs on every request.
+_DB_ENGINE_CACHE = None
+_DB_ENGINE_INITIALIZED = False
+
 
 def _allow_unauth_local() -> bool:
     v = os.getenv("ALLOW_UNAUTH_LOCAL")
@@ -42,6 +47,7 @@ def _parse_adonet_to_engine(conn_str: str):
     """Convert an ADO.NET connection string into a SQLAlchemy mssql+pyodbc Engine."""
     import urllib.parse
     from sqlalchemy import create_engine
+    import pyodbc
 
     parts = {}
     for part in conn_str.strip().split(";"):
@@ -59,8 +65,19 @@ def _parse_adonet_to_engine(conn_str: str):
     trust = "yes" if parts.get("trustservercertificate", "True").lower() in ("true", "yes", "1") else "no"
     timeout = parts.get("connection timeout", "30")
 
+    preferred_drivers = ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server")
+    installed_drivers = set(pyodbc.drivers() or [])
+    candidate_drivers = [d for d in preferred_drivers if d in installed_drivers]
+
+    if not candidate_drivers:
+        available = ", ".join(sorted(installed_drivers)) if installed_drivers else "none"
+        raise RuntimeError(
+            "No SQL Server ODBC driver found. "
+            f"Expected one of: {', '.join(preferred_drivers)}. Available: {available}"
+        )
+
     last_exc = None
-    for driver in ("ODBC Driver 17 for SQL Server", "ODBC Driver 18 for SQL Server"):
+    for driver in candidate_drivers:
         odbc = (
             f"Driver={{{driver}}};Server={server};Database={database};"
             f"Uid={uid};Pwd={pwd};Encrypt={encrypt};"
@@ -76,20 +93,42 @@ def _parse_adonet_to_engine(conn_str: str):
 
 
 def _build_neurowell_db_engine():
+    global _DB_ENGINE_CACHE, _DB_ENGINE_INITIALIZED
+
+    if _DB_ENGINE_INITIALIZED:
+        return _DB_ENGINE_CACHE
+
     from sqlalchemy import create_engine
 
     db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URI")
     if not db_url:
+        _DB_ENGINE_INITIALIZED = True
+        _DB_ENGINE_CACHE = None
         return None
 
     stripped = db_url.strip()
-    # ADO.NET-style strings start with "Server=", "Data Source=", etc. — not a URL scheme
-    if "://" not in stripped:
-        return _parse_adonet_to_engine(stripped)
+    try:
+        # ADO.NET-style strings start with "Server=", "Data Source=", etc. — not a URL scheme
+        if "://" not in stripped:
+            engine = _parse_adonet_to_engine(stripped)
+        else:
+            # Use the URL as-is — the database is already encoded inside the odbc_connect
+            # query parameter. Running make_url()+str() can corrupt the percent-encoding.
+            engine = create_engine(stripped)
 
-    # Use the URL as-is — the database is already encoded inside the odbc_connect
-    # query parameter. Running make_url()+str() can corrupt the percent-encoding.
-    return create_engine(stripped)
+        # Validate connectivity once so missing-driver/runtime issues degrade
+        # gracefully to DB-disabled mode instead of repeated request-time failures.
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+
+        _DB_ENGINE_CACHE = engine
+        return _DB_ENGINE_CACHE
+    except Exception as exc:
+        logger.warning("Database engine unavailable; DB-backed features disabled: %s", exc)
+        _DB_ENGINE_CACHE = None
+        return None
+    finally:
+        _DB_ENGINE_INITIALIZED = True
 
 
 def _persist_chat_or_file(
