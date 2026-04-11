@@ -524,6 +524,7 @@ def qa():
     except Exception:
         effective_question = question
 
+    prescription_text = ""
     # Enrich with latest uploaded prescription text as hidden context.
     try:
         prescription_text = _get_latest_prescription_context(username)
@@ -534,7 +535,25 @@ def qa():
                 + prescription_text
             )
     except Exception:
-        pass
+        prescription_text = ""
+
+    def _is_prescription_question(s: str) -> bool:
+        try:
+            import re
+            if not s:
+                return False
+            s2 = str(s).strip().lower()
+            return bool(
+                re.search(
+                    r"\b(prescription|medicine|medicines|tablet|capsule|dose|dosage|rx|drug|medication|side\s*effect|what\s+is\s+this\s+medicine)\b",
+                    s2,
+                )
+            )
+        except Exception:
+            return False
+
+    has_prescription_context = bool((prescription_text or "").strip())
+    wants_prescription_explanation = has_prescription_context and _is_prescription_question(question or "")
 
     # Simple greeting pre-check: detect short greetings and reply locally
     def _is_simple_greeting(s: str) -> bool:
@@ -686,8 +705,15 @@ def qa():
                 logger.info("LLM: calling Google GenAI generate_content for question: %s", (question or "")[:200])
                 llm_debug["attempted"] = True
 
-                # Check cache first
-                qkey = (question or "").strip()
+                # Check cache first. Include prescription context flags so
+                # old generic replies do not get reused for uploaded prescriptions.
+                qkey = (
+                    (question or "").strip()
+                    + "|rx="
+                    + ("1" if has_prescription_context else "0")
+                    + "|rxq="
+                    + ("1" if wants_prescription_explanation else "0")
+                )
                 now = time.time()
                 cached = _QA_CACHE.get(qkey)
                 if cached and cached[1] > now:
@@ -708,12 +734,20 @@ def qa():
 
                 prompt_text = (
                     "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
-                    "You are not a doctor; never present output as medical diagnosis or prescription. "
+                    "You are not a doctor; never present output as a definitive diagnosis. "
                     "Only answer questions related to neurology or mental health. "
                     "If the user's question is outside these topics, respond politely: 'I\'m a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
-                    "Otherwise, answer concisely with a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek help. "
-                    "When prescription context is present, provide a practical relief/support procedure and clearly frame it as general support, not medical advice. "
-                    "Return cleanly formatted text.\n\nQuestion:\n" + (effective_question or question or "") + "\n\nAnswer:"
+                    "If prescription context is present and the user asks about the prescription/medicines, DO NOT refuse. "
+                    "Provide a detailed explanation with: (1) probable medicine names identified from the text, "
+                    "(2) likely purpose of each medicine, (3) typical usage guidance in plain language, "
+                    "(4) common side effects and warning signs, and (5) when to contact a doctor urgently. "
+                    "If any medicine text is unclear, explicitly say which part is unclear and ask for a clearer image or text. "
+                    "Keep tone supportive and practical, and include a short medical disclaimer that this is educational guidance, not diagnosis. "
+                    "Return cleanly formatted text.\n\n"
+                    + ("User intent: explain uploaded prescription in detail.\n\n" if wants_prescription_explanation else "")
+                    + "Question:\n"
+                    + (effective_question or question or "")
+                    + "\n\nAnswer:"
                 )
                 contents = [{"role": "user", "parts": [{"text": prompt_text}]}]
                 # Request a smaller response to conserve quota
