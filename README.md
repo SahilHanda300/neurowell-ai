@@ -11,7 +11,7 @@ NeuroWell AI is a web application that provides specialized support for neurolog
 - **AI-Powered Q&A**: Answers questions related to neurology and mental health
 - **RAG System**: Retrieves relevant information from an embedded knowledge base
 - **User Authentication**: Google OAuth 2.0 integration
-- **Chat History**: Persists conversations to SQL Server
+- **Chat History**: Persists conversations to Azure SQL Server
 - **Prescription Upload**: Support for uploading prescription documents
 - **Production Deployment**: Docker-based deployment on Render
 
@@ -91,14 +91,14 @@ gunicorn run:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
 **Environment Variables** (set in Render dashboard):
 
 - `GEMINI_API_KEY` - Google Generative AI API key
-- `DATABASE_URI` - SQL Server connection string
+- `DATABASE_URI` - Azure SQL Server connection string
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
 - `SECRET_KEY` - Flask session encryption key
 
 ### Database Setup
 
-The application uses SQL Server with a `chat_history` table for storing conversations. The table is created automatically on first use.
+The application uses Azure SQL Server with a `chat_history` table for storing conversations. The table is created automatically on first use.
 
 Required columns:
 
