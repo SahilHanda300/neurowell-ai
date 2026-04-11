@@ -49,7 +49,7 @@ def save_chat_entry(
     uploaded_file_type: Optional[str] = None,
     uploaded_file_size: Optional[int] = None,
     uploaded_file_content: Optional[bytes] = None,
-) -> None:
+) -> Optional[int]:
     """Persist one chat/file entry for a user in dbo.chat_history."""
     if engine is None:
         raise ValueError("engine is required")
@@ -70,6 +70,7 @@ INSERT INTO dbo.chat_history (
     uploaded_file_type,
     uploaded_file_size,
     uploaded_file_content
+) OUTPUT INSERTED.id
 ) VALUES (
     :username,
     :user_message,
@@ -83,7 +84,7 @@ INSERT INTO dbo.chat_history (
     )
 
     with engine.begin() as conn:
-        conn.execute(
+        result = conn.execute(
             insert_sql,
             {
                 "username": username,
@@ -95,3 +96,8 @@ INSERT INTO dbo.chat_history (
                 "uploaded_file_content": uploaded_file_content,
             },
         )
+        inserted_id = result.scalar()
+        try:
+            return int(inserted_id) if inserted_id is not None else None
+        except Exception:
+            return None

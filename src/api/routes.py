@@ -24,6 +24,8 @@ logger = logging.getLogger("neurowell.api")
 # instead of emitting noisy traceback logs on every request.
 _DB_ENGINE_CACHE = None
 _DB_ENGINE_INITIALIZED = False
+_DB_ENGINE_LAST_FAILURE_AT = 0.0
+_DB_ENGINE_RETRY_SECONDS = int(os.getenv("DB_ENGINE_RETRY_SECONDS", "20"))
 
 
 def _allow_unauth_local() -> bool:
@@ -93,10 +95,15 @@ def _parse_adonet_to_engine(conn_str: str):
 
 
 def _build_neurowell_db_engine():
-    global _DB_ENGINE_CACHE, _DB_ENGINE_INITIALIZED
+    global _DB_ENGINE_CACHE, _DB_ENGINE_INITIALIZED, _DB_ENGINE_LAST_FAILURE_AT
 
-    if _DB_ENGINE_INITIALIZED:
+    if _DB_ENGINE_INITIALIZED and _DB_ENGINE_CACHE is not None:
         return _DB_ENGINE_CACHE
+
+    if _DB_ENGINE_INITIALIZED and _DB_ENGINE_CACHE is None:
+        now = time.time()
+        if (now - _DB_ENGINE_LAST_FAILURE_AT) < _DB_ENGINE_RETRY_SECONDS:
+            return None
 
     from sqlalchemy import create_engine
 
@@ -122,10 +129,12 @@ def _build_neurowell_db_engine():
             conn.exec_driver_sql("SELECT 1")
 
         _DB_ENGINE_CACHE = engine
+        _DB_ENGINE_LAST_FAILURE_AT = 0.0
         return _DB_ENGINE_CACHE
     except Exception as exc:
         logger.warning("Database engine unavailable; DB-backed features disabled: %s", exc)
         _DB_ENGINE_CACHE = None
+        _DB_ENGINE_LAST_FAILURE_AT = time.time()
         return None
     finally:
         _DB_ENGINE_INITIALIZED = True
@@ -152,7 +161,7 @@ def _persist_chat_or_file(
             return
 
         logger.debug("_persist_chat_or_file: saving row for user=%s", username)
-        save_chat_entry(
+        inserted_id = save_chat_entry(
             engine=engine,
             username=username,
             user_message=user_message,
@@ -162,7 +171,7 @@ def _persist_chat_or_file(
             uploaded_file_size=uploaded_file_size,
             uploaded_file_content=uploaded_file_content,
         )
-        logger.debug("_persist_chat_or_file: row saved OK for user=%s", username)
+        logger.info("_persist_chat_or_file: row saved OK id=%s user=%s", inserted_id, username)
     except Exception:
         logger.exception("Failed to persist chat/file history row")
 
@@ -874,6 +883,49 @@ def get_conversation():
         return jsonify({"conversation": conv, "username": username}), 200
     except Exception as e:
         return jsonify({"error": "failed to read conversation", "detail": str(e)}), 500
+
+
+@api_bp.route("/db_health", methods=["GET"])
+def db_health():
+    """Quick DB diagnostics for persistence verification."""
+    if not session.get('user') and not _allow_unauth_local():
+        return jsonify({"error": "authentication required"}), 401
+
+    try:
+        import pyodbc
+        from sqlalchemy import text
+
+        engine = _build_neurowell_db_engine()
+        if engine is None:
+            return jsonify(
+                {
+                    "ok": False,
+                    "db": "unavailable",
+                    "drivers": pyodbc.drivers(),
+                    "reason": "engine unavailable",
+                }
+            ), 503
+
+        with engine.connect() as conn:
+            ping = conn.execute(text("SELECT 1 AS ok")).scalar()
+            table_exists = conn.execute(
+                text("SELECT OBJECT_ID('dbo.chat_history')")
+            ).scalar()
+            row_count = conn.execute(
+                text("SELECT COUNT(1) FROM dbo.chat_history")
+            ).scalar() if table_exists else 0
+
+        return jsonify(
+            {
+                "ok": bool(ping == 1),
+                "db": "connected",
+                "table_exists": bool(table_exists),
+                "chat_history_count": int(row_count or 0),
+                "drivers": pyodbc.drivers(),
+            }
+        ), 200
+    except Exception as e:
+        return jsonify({"ok": False, "db": "error", "detail": str(e)}), 500
 
 
 @api_bp.route("/audit", methods=["GET"])
