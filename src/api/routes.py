@@ -5,6 +5,7 @@ from pathlib import Path
 import logging
 import traceback
 import importlib
+from io import BytesIO
 
 from src.rag.chain import RAGChain
 def postprocess_text(text: str) -> str:
@@ -20,21 +21,257 @@ api_bp = Blueprint("api", __name__)
 logger = logging.getLogger("neurowell.api")
 
 
-def _detect_severity(*texts) -> str | None:
-    """Return 'high' if any of the provided texts contain emergency keywords."""
+def _allow_unauth_local() -> bool:
+    v = os.getenv("ALLOW_UNAUTH_LOCAL")
+    if not v:
+        return False
+    return str(v).lower() in ("1", "true", "yes")
+
+
+def _current_username() -> str | None:
     try:
-        import re
-        if not texts:
-            return None
-        pattern = re.compile(r"\b(suicid|suicide|suicidal|kill(?:ing)?\s+myself|kill\s+myself|hurt\s+myself|self-?harm|want\s+to\s+die|end\s+my\s+life)\b", re.IGNORECASE)
-        for t in texts:
-            if not t:
-                continue
-            if pattern.search(str(t)):
-                return 'high'
+        user = session.get("user") if session else None
+        if isinstance(user, dict):
+            return user.get("email") or user.get("name") or user.get("sub")
     except Exception:
         return None
     return None
+
+
+def _parse_adonet_to_engine(conn_str: str):
+    """Convert an ADO.NET connection string into a SQLAlchemy mssql+pyodbc Engine."""
+    import urllib.parse
+    from sqlalchemy import create_engine
+
+    parts = {}
+    for part in conn_str.strip().split(";"):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        key, _, val = part.partition("=")
+        parts[key.strip().lower()] = val.strip()
+
+    server = parts.get("server", parts.get("data source", "")).lstrip("tcp:").strip()
+    database = parts.get("initial catalog", parts.get("database", "neurowell-db"))
+    uid = parts.get("user id", parts.get("uid", ""))
+    pwd = parts.get("password", parts.get("pwd", ""))
+    encrypt = "yes" if parts.get("encrypt", "True").lower() in ("true", "yes", "1") else "no"
+    trust = "yes" if parts.get("trustservercertificate", "True").lower() in ("true", "yes", "1") else "no"
+    timeout = parts.get("connection timeout", "30")
+
+    last_exc = None
+    for driver in ("ODBC Driver 17 for SQL Server", "ODBC Driver 18 for SQL Server"):
+        odbc = (
+            f"Driver={{{driver}}};Server={server};Database={database};"
+            f"Uid={uid};Pwd={pwd};Encrypt={encrypt};"
+            f"TrustServerCertificate={trust};Connection Timeout={timeout};"
+        )
+        url = "mssql+pyodbc:///?odbc_connect=" + urllib.parse.quote_plus(odbc)
+        try:
+            return create_engine(url)
+        except Exception as exc:
+            last_exc = exc
+            continue
+    raise RuntimeError(f"Could not build engine from ADO.NET string: {last_exc}")
+
+
+def _build_neurowell_db_engine():
+    from sqlalchemy import create_engine
+
+    db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URI")
+    if not db_url:
+        return None
+
+    stripped = db_url.strip()
+    # ADO.NET-style strings start with "Server=", "Data Source=", etc. — not a URL scheme
+    if "://" not in stripped:
+        return _parse_adonet_to_engine(stripped)
+
+    # Use the URL as-is — the database is already encoded inside the odbc_connect
+    # query parameter. Running make_url()+str() can corrupt the percent-encoding.
+    return create_engine(stripped)
+
+
+def _persist_chat_or_file(
+    username: str,
+    user_message: str | None = None,
+    assistant_response: str | None = None,
+    uploaded_file_name: str | None = None,
+    uploaded_file_type: str | None = None,
+    uploaded_file_size: int | None = None,
+    uploaded_file_content: bytes | None = None,
+) -> None:
+    if not username:
+        return
+
+    try:
+        from src.audit.chat_history import save_chat_entry
+
+        engine = _build_neurowell_db_engine()
+        if engine is None:
+            logger.error("_persist_chat_or_file: engine is None — DATABASE_URI/DATABASE_URL not set or unparseable")
+            return
+
+        logger.debug("_persist_chat_or_file: saving row for user=%s", username)
+        save_chat_entry(
+            engine=engine,
+            username=username,
+            user_message=user_message,
+            assistant_response=assistant_response,
+            uploaded_file_name=uploaded_file_name,
+            uploaded_file_type=uploaded_file_type,
+            uploaded_file_size=uploaded_file_size,
+            uploaded_file_content=uploaded_file_content,
+        )
+        logger.debug("_persist_chat_or_file: row saved OK for user=%s", username)
+    except Exception:
+        logger.exception("Failed to persist chat/file history row")
+
+
+def _load_user_history(username: str, limit: int = 300):
+    """Load persisted chat history for a user from dbo.chat_history."""
+    if not username:
+        return []
+
+    try:
+        from sqlalchemy import text
+
+        engine = _build_neurowell_db_engine()
+        if engine is None:
+            return []
+
+        sql = text(
+            """
+SELECT TOP (:limit)
+    id,
+    created_at,
+    user_message,
+    assistant_response,
+    uploaded_file_name,
+    uploaded_file_type,
+    uploaded_file_size
+FROM dbo.chat_history
+WHERE username = :username
+ORDER BY created_at ASC, id ASC
+"""
+        )
+
+        with engine.connect() as conn:
+            rows = conn.execute(sql, {"limit": int(limit), "username": username}).mappings().all()
+
+        conversation = []
+        for row in rows:
+            user_message = (row.get("user_message") or "").strip()
+            assistant_response = (row.get("assistant_response") or "").strip()
+
+            if user_message:
+                conversation.append({"role": "user", "content": user_message})
+            if assistant_response:
+                conversation.append({"role": "assistant", "content": assistant_response})
+
+        return conversation
+    except Exception:
+        logger.exception("Failed to load user history from database")
+        return []
+
+
+def _extract_prescription_text(file_name: str | None, file_type: str | None, file_bytes: bytes | None) -> str:
+    """Best-effort text extraction from uploaded prescription files."""
+    if not file_bytes:
+        return ""
+
+    file_name_l = (file_name or "").lower()
+    file_type_l = (file_type or "").lower()
+
+    try:
+        if file_name_l.endswith(".pdf") or "pdf" in file_type_l:
+            from PyPDF2 import PdfReader
+
+            reader = PdfReader(BytesIO(file_bytes))
+            pages = []
+            for p in reader.pages[:8]:
+                txt = (p.extract_text() or "").strip()
+                if txt:
+                    pages.append(txt)
+            out = "\n".join(pages).strip()
+            return " ".join(out.split())[:4000]
+    except Exception:
+        logger.debug("Prescription PDF extraction failed", exc_info=True)
+
+    try:
+        # Best-effort decoding for text-like uploads.
+        out = file_bytes.decode("utf-8", errors="ignore").strip()
+        return " ".join(out.split())[:4000]
+    except Exception:
+        return ""
+
+
+def _get_latest_prescription_context(username: str) -> str:
+    """Return extracted text from the latest uploaded prescription for the user."""
+    if not username:
+        return ""
+
+    try:
+        from sqlalchemy import text
+
+        engine = _build_neurowell_db_engine()
+        if engine is None:
+            return ""
+
+        sql = text(
+            """
+SELECT TOP 1
+    uploaded_file_name,
+    uploaded_file_type,
+    uploaded_file_content
+FROM dbo.chat_history
+WHERE username = :username
+  AND uploaded_file_content IS NOT NULL
+ORDER BY created_at DESC, id DESC
+"""
+        )
+
+        with engine.connect() as conn:
+            row = conn.execute(sql, {"username": username}).mappings().first()
+        if not row:
+            return ""
+
+        raw_bytes = row.get("uploaded_file_content")
+        if raw_bytes is None:
+            return ""
+        file_bytes = bytes(raw_bytes)
+
+        text_out = _extract_prescription_text(
+            file_name=row.get("uploaded_file_name"),
+            file_type=row.get("uploaded_file_type"),
+            file_bytes=file_bytes,
+        )
+        return text_out or ""
+    except Exception:
+        logger.exception("Failed loading latest prescription context")
+        return ""
+
+
+def _detect_severity(*texts) -> str | None:
+    """Return neutral, low, or high based on the provided texts."""
+    try:
+        import re
+        if not texts:
+            return "neutral"
+        high_pattern = re.compile(r"\b(suicid|suicide|suicidal|kill(?:ing)?\s+myself|kill\s+myself|hurt\s+myself|self-?harm|want\s+to\s+die|end\s+my\s+life|seizure|stroke|fainted|unconscious|cannot\s+breathe|paralysis|chest\s+pain)\b", re.IGNORECASE)
+        low_pattern = re.compile(r"\b(headache|migraine|dizziness|sleepy|fatigue|stress|anxiety|panic|sad|depression|insomnia|memory|tremor|numb|tingling|pain|confusion|mood|weakness)\b", re.IGNORECASE)
+        saw_low = False
+        for t in texts:
+            if not t:
+                continue
+            text_value = str(t)
+            if high_pattern.search(text_value):
+                return 'high'
+            if low_pattern.search(text_value):
+                saw_low = True
+    except Exception:
+        return "neutral"
+    return "low" if saw_low else "neutral"
 
 
 
@@ -114,12 +351,6 @@ def qa():
     """
     # Require authenticated user session
     # For convenient local testing, set env var `ALLOW_UNAUTH_LOCAL=1` to bypass session auth.
-    def _allow_unauth_local():
-        v = os.getenv("ALLOW_UNAUTH_LOCAL")
-        if not v:
-            return False
-        return str(v).lower() in ("1", "true", "yes")
-
     if not session.get('user') and not _allow_unauth_local():
         return jsonify({"error": "authentication required"}), 401
 
@@ -138,6 +369,8 @@ def qa():
 
     if not question:
         return jsonify({"error": "missing question"}), 400
+
+    username = _current_username() or os.getenv("API_USER") or "anonymous"
 
     # Prefer cookie-backed session conversation stored in `session['conversation']`.
     session_conv = session.get("conversation") or []
@@ -167,6 +400,18 @@ def qa():
     except Exception:
         effective_question = question
 
+    # Enrich with latest uploaded prescription text as hidden context.
+    try:
+        prescription_text = _get_latest_prescription_context(username)
+        if prescription_text:
+            effective_question = (
+                (effective_question or question or "")
+                + "\n\nUser prescription context (for supportive guidance only, not diagnosis):\n"
+                + prescription_text
+            )
+    except Exception:
+        pass
+
     # Simple greeting pre-check: detect short greetings and reply locally
     def _is_simple_greeting(s: str) -> bool:
         try:
@@ -195,13 +440,19 @@ def qa():
         except Exception:
             pass
 
+        _persist_chat_or_file(
+            username=username,
+            user_message=question,
+            assistant_response=reply,
+        )
+
         resp_body = {
             "question": question,
             "answer": reply,
             "sources": [],
             "used_llm": False,
             "llm_debug": {"attempted": False, "success": False, "candidates_present": False, "error": None},
-            "severity": None,
+            "severity": "neutral",
             "conversation": session.get("conversation") or [],
         }
         return jsonify(resp_body), 200
@@ -259,6 +510,12 @@ def qa():
                     session["conversation"] = sc
                 except Exception:
                     pass
+
+                _persist_chat_or_file(
+                    username=username,
+                    user_message=question,
+                    assistant_response=followup_reply,
+                )
 
                 resp_body = {
                     "question": question,
@@ -318,13 +575,20 @@ def qa():
                         processed = cached[0]
                     # severity detection for cached responses
                     sev = _detect_severity(question, processed)
+                    _persist_chat_or_file(
+                        username=username,
+                        user_message=question,
+                        assistant_response=processed,
+                    )
                     return jsonify({"question": question, "answer": processed, "sources": [], "used_llm": True, "severity": sev}), 200
 
                 prompt_text = (
                     "You are NeuroWell, a specialist Mental Health and Neurology support assistant. "
+                    "You are not a doctor; never present output as medical diagnosis or prescription. "
                     "Only answer questions related to neurology or mental health. "
                     "If the user's question is outside these topics, respond politely: 'I\'m a Mental Health Support System and cannot assist with that topic. Please ask about neurology or mental health-related concerns.' "
                     "Otherwise, answer concisely with a brief definition, common causes or triggers if relevant, practical coping strategies, and guidance on when to seek help. "
+                    "When prescription context is present, provide a practical relief/support procedure and clearly frame it as general support, not medical advice. "
                     "Return cleanly formatted text.\n\nQuestion:\n" + (effective_question or question or "") + "\n\nAnswer:"
                 )
                 contents = [{"role": "user", "parts": [{"text": prompt_text}]}]
@@ -357,6 +621,11 @@ def qa():
                                 duration_ms = (time.time() - start) * 1000.0
                                 # severity detection (check question and answer)
                                 sev = _detect_severity(question, answer)
+                                _persist_chat_or_file(
+                                    username=username,
+                                    user_message=question,
+                                    assistant_response=answer,
+                                )
                                 return jsonify({"question": question, "answer": answer, "sources": [], "used_llm": True, "llm_debug": llm_debug, "severity": sev}), 200
             except Exception as e:
                 tb = traceback.format_exc()
@@ -384,7 +653,7 @@ def qa():
     # Basic severity detection (best-effort): check question text for emergency keywords
     # Basic severity detection (best-effort): check question and the
     # generated answer (or other conversation text) for emergency keywords.
-    severity = None
+    severity = "neutral"
     try:
         # Prefer centralized detector which accepts multiple texts
         severity = _detect_severity(question, answer)
@@ -400,7 +669,7 @@ def qa():
                     severity = 'high'
                     break
     except Exception:
-        severity = None
+        severity = "neutral"
 
     # Build sources list (best-effort) using retriever metadata. However,
     # if retrieved docs are low-relevance for the question, do not return
@@ -479,15 +748,8 @@ def qa():
         from sqlalchemy.engine import make_url
         from src.audit.mssql_audit import record_api_audit
 
-        db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URI")
-        if db_url:
-            # Ensure audit writes go to the AI_DB database regardless of the configured DB
-            try:
-                url_obj = make_url(db_url)
-                url_obj.database = "AI_DB"
-                engine = create_engine(str(url_obj))
-            except Exception:
-                engine = create_engine(db_url)
+        engine = _build_neurowell_db_engine()
+        if engine is not None:
             # short summary of answer (truncate)
             resp_snip = answer if len(answer) < 2000 else answer[:1997] + "..."
             record_api_audit(
@@ -513,6 +775,13 @@ def qa():
     except Exception:
         pass
 
+    # Persist chat exchange into MSSQL chat_history (best-effort).
+    _persist_chat_or_file(
+        username=username,
+        user_message=question,
+        assistant_response=answer,
+    )
+
     resp_body = {"question": question, "answer": answer, "sources": sources, "used_llm": used_llm, "llm_debug": llm_debug, "severity": severity}
     try:
         resp_body["conversation"] = session.get("conversation") or []
@@ -524,39 +793,53 @@ def qa():
 
 @api_bp.route("/clear_conversation", methods=["POST"])
 def clear_conversation():
-    """Clear the stored conversation for the current session (best-effort)."""
+    """Clear stored conversation for current session and persisted user history."""
+    username = _current_username() or os.getenv("API_USER") or "anonymous"
     try:
         session.pop("conversation", None)
         # also clear any client-provided history stored in session helper keys
         session.pop("_session_id", None)
     except Exception:
         pass
+
+    # Best-effort delete for persisted per-user history.
+    try:
+        from sqlalchemy import text
+
+        engine = _build_neurowell_db_engine()
+        if engine is not None and username:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM dbo.chat_history WHERE username = :username"),
+                    {"username": username},
+                )
+    except Exception:
+        logger.exception("Failed clearing persisted user history")
+
     return jsonify({"ok": True}), 200
 
 
 @api_bp.route("/conversation", methods=["GET"])
 def get_conversation():
-    """Return the stored conversation for this session (best-effort)."""
+    """Return persisted conversation and uploads for the current user."""
     # Require authenticated user session
-    def _allow_unauth_local():
-        v = os.getenv("ALLOW_UNAUTH_LOCAL")
-        if not v:
-            return False
-        return str(v).lower() in ("1", "true", "yes")
-
     if not session.get('user') and not _allow_unauth_local():
         return jsonify({"error": "authentication required"}), 401
 
     try:
-        conv = session.get("conversation") or []
-        return jsonify({"conversation": conv}), 200
+        username = _current_username() or os.getenv("API_USER") or "anonymous"
+        conv = _load_user_history(username=username, limit=500)
+        if not conv:
+            # Fallback to session for environments without DB configuration.
+            conv = session.get("conversation") or []
+        return jsonify({"conversation": conv, "username": username}), 200
     except Exception as e:
         return jsonify({"error": "failed to read conversation", "detail": str(e)}), 500
 
 
 @api_bp.route("/audit", methods=["GET"])
 def audit():
-    """Return recent rows from the `audit_logs` table in AI_DB.
+    """Return recent rows from the `audit_logs` table in neurowell-db.
 
     Query params:
       - limit: max rows to return (default 50)
@@ -569,16 +852,9 @@ def audit():
         from sqlalchemy import create_engine, text
         from sqlalchemy.engine import make_url
 
-        db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URI")
-        if not db_url:
+        engine = _build_neurowell_db_engine()
+        if engine is None:
             return jsonify({"error": "DATABASE_URL or DATABASE_URI not configured"}), 503
-
-        try:
-            url_obj = make_url(db_url)
-            url_obj.database = "AI_DB"
-            engine = create_engine(str(url_obj))
-        except Exception:
-            engine = create_engine(db_url)
 
         # Ensure audit table exists before attempting to read
         try:
@@ -627,12 +903,6 @@ def audit():
 def clear_cache():
     """Clear the in-memory QA cache (useful during development)."""
     # Require authenticated user session for safety in dev
-    def _allow_unauth_local():
-        v = os.getenv("ALLOW_UNAUTH_LOCAL")
-        if not v:
-            return False
-        return str(v).lower() in ("1", "true", "yes")
-
     if not session.get('user') and not _allow_unauth_local():
         return jsonify({"error": "authentication required"}), 401
 
@@ -838,3 +1108,46 @@ def debug_retrieval():
         return jsonify({"query": q, "results": out}), 200
     except Exception as e:
         return jsonify({"error": "failed to run retrieval", "detail": str(e)}), 500
+
+
+@api_bp.route("/upload", methods=["POST"])
+def upload_file():
+    """Store uploaded file content in chat_history for the authenticated user."""
+    if not session.get("user") and not _allow_unauth_local():
+        return jsonify({"error": "authentication required"}), 401
+
+    if "file" not in request.files:
+        return jsonify({"error": "missing file"}), 400
+
+    file_obj = request.files.get("file")
+    if file_obj is None or not file_obj.filename:
+        return jsonify({"error": "invalid file"}), 400
+
+    max_upload_mb = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
+    file_bytes = file_obj.read() or b""
+    if len(file_bytes) > max_upload_mb * 1024 * 1024:
+        return jsonify({"error": f"file too large; max {max_upload_mb}MB"}), 413
+
+    username = _current_username() or os.getenv("API_USER") or "anonymous"
+    client_note = (request.form.get("note") or "").strip() or None
+
+    _persist_chat_or_file(
+        username=username,
+        user_message=client_note,
+        assistant_response=None,
+        uploaded_file_name=file_obj.filename,
+        uploaded_file_type=file_obj.mimetype,
+        uploaded_file_size=len(file_bytes),
+        uploaded_file_content=file_bytes,
+    )
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "message": "Prescription uploaded successfully",
+                "username": username,
+            }
+        ),
+        200,
+    )

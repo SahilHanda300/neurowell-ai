@@ -5,6 +5,8 @@ Flask-Cors
 gunicorn
 requests
 python-dotenv
+SQLAlchemy
+pyodbc
 faiss-cpu
 PyPDF2
 langchain

@@ -2,8 +2,22 @@ from flask import Blueprint, current_app, session, redirect, url_for, jsonify
 from flask import request
 from authlib.integrations.base_client.errors import MismatchingStateError
 import secrets
+import os
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _google_redirect_uri() -> str:
+    # Allow explicit override so Google Console URI can be matched exactly,
+    # especially during localhost development.
+    env_uri = (
+        os.getenv('GOOGLE_OAUTH_REDIRECT_URI')
+        or os.getenv('OAUTH_REDIRECT_URI')
+        or os.getenv('GOOGLE_REDIRECT_URI')
+    )
+    if env_uri:
+        return env_uri.strip()
+    return url_for('auth.google_callback', _external=True)
 
 
 @auth_bp.route('/auth/google/login')
@@ -29,7 +43,7 @@ def google_login():
     except Exception:
         current_app.logger.debug('google_login session logging failed')
 
-    redirect_uri = url_for('auth.google_callback', _external=True)
+    redirect_uri = _google_redirect_uri()
     prompt = request.args.get('prompt')
     current_app.logger.debug('google_login redirect_uri=%s state=%s prompt=%s', redirect_uri, state, prompt)
     if prompt:

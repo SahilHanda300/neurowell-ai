@@ -8,6 +8,9 @@ const chatMessages = document.getElementById("chatMessages");
 const severityContainer = document.getElementById("severityContainer");
 const providersSection = document.getElementById("providersSection");
 const providersList = document.getElementById("providersList");
+const uploadFileInput = document.getElementById("uploadFile");
+const uploadBtn = document.getElementById("uploadBtn");
+const uploadNoteInput = document.getElementById("uploadNote");
 
 // In-memory chat history for context preservation between turns.
 // Each entry: { role: 'user'|'assistant', content: '...' }
@@ -26,8 +29,8 @@ function severityBadge(sev) {
   const s = String(sev).toLowerCase();
   let color = "bg-gray-500";
 
-  if (s === "low") color = "bg-green-600";
-  else if (s === "medium") color = "bg-yellow-600";
+  if (s === "neutral") color = "bg-slate-500";
+  else if (s === "low") color = "bg-amber-600";
   else if (s === "high" || s === "severe" || s === "urgent" || s === "crisis") {
     color = "bg-red-600";
   }
@@ -160,25 +163,19 @@ async function askQuestion() {
         span.innerHTML = badgeHtml;
         wrapper.appendChild(span);
 
-        // Only show the Get Help button for high/severe-like severities
         const sev = String(data.severity).toLowerCase();
-        if (
-          sev === "high" ||
-          sev === "severe" ||
-          sev === "urgent" ||
-          sev === "crisis"
-        ) {
-          const btn = document.createElement("button");
-          btn.id = "getHelpBtn";
-          btn.className =
-            "inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700";
-          btn.textContent = "Get Help";
-          btn.addEventListener("click", (e) => {
-            e.preventDefault();
-            showEmergencyMap();
-          });
-          wrapper.appendChild(btn);
-        }
+        const btn = document.createElement("button");
+        btn.id = "nearbyNeurologistsBtn";
+        btn.className =
+          sev === "high"
+            ? "inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+            : "inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700";
+        btn.textContent = "Neurologists Nearby";
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          showEmergencyMap();
+        });
+        wrapper.appendChild(btn);
 
         severityContainer.appendChild(wrapper);
       } catch (e) {
@@ -230,6 +227,49 @@ async function askQuestion() {
   }
 }
 
+async function uploadFileToServer() {
+  if (
+    !uploadFileInput ||
+    !uploadFileInput.files ||
+    !uploadFileInput.files.length
+  ) {
+    statusEl.textContent = "Please choose a file first.";
+    return;
+  }
+
+  const file = uploadFileInput.files[0];
+  const formData = new FormData();
+  formData.append("file", file);
+  if (uploadNoteInput && uploadNoteInput.value.trim()) {
+    formData.append("note", uploadNoteInput.value.trim());
+  }
+
+  statusEl.textContent = "Uploading file...";
+  if (uploadBtn) uploadBtn.setAttribute("disabled", "disabled");
+
+  try {
+    const resp = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(data.error || `status ${resp.status}`);
+    }
+
+    statusEl.textContent =
+      data.message || "Prescription uploaded successfully.";
+    uploadFileInput.value = "";
+    if (uploadNoteInput) uploadNoteInput.value = "";
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "File upload failed. Please try again.";
+  } finally {
+    if (uploadBtn) uploadBtn.removeAttribute("disabled");
+  }
+}
+
 // Escape HTML (for non-markdown injected content like severity/providers)
 function escapeHtml(unsafe) {
   if (unsafe == null) return "";
@@ -241,9 +281,24 @@ function escapeHtml(unsafe) {
     .replace(/'/g, "&#039;");
 }
 
+function clearConversationPlaceholder() {
+  try {
+    if (!chatMessages) return;
+    const emptyNode = chatMessages.querySelector(
+      '[data-empty-placeholder="true"]',
+    );
+    if (emptyNode) {
+      emptyNode.remove();
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 // Render a message into the `#chatMessages` container
 function renderMessage(role, content, playSound = false) {
   if (!chatMessages) return;
+  clearConversationPlaceholder();
   // Build a message row with avatar + bubble. Assistant avatars on left,
   // user avatars on right.
   const row = document.createElement("div");
@@ -691,10 +746,8 @@ function showEmergencyMap() {
     // sessionStorage may be unavailable in some embed contexts; ignore
   }
 
-  iframe.src =
-    "https://www.google.com/maps?q=psychology+center+near+me&output=embed";
-  openLink.href =
-    "https://www.google.com/maps/search/psychology+center+near+me";
+  iframe.src = "https://www.google.com/maps?q=neurologist+near+me&output=embed";
+  openLink.href = "https://www.google.com/maps/search/neurologist+near+me";
 
   modal.classList.remove("hidden");
 
@@ -710,6 +763,9 @@ function hideEmergencyMap() {
 
 // Events
 askBtn.addEventListener("click", askQuestion);
+if (uploadBtn) {
+  uploadBtn.addEventListener("click", uploadFileToServer);
+}
 
 // Clear conversation handler
 const clearBtn = document.getElementById("clearBtn");
@@ -892,6 +948,7 @@ function renderConversationUI(historyArray) {
     if (!has) {
       const placeholder = document.createElement("div");
       placeholder.className = "text-sm text-gray-500 p-6 text-center w-full";
+      placeholder.setAttribute("data-empty-placeholder", "true");
       placeholder.textContent = "No conversations yet";
       chatMessages.appendChild(placeholder);
       severityContainer.innerHTML = "";

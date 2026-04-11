@@ -229,7 +229,28 @@
       style="display: none; padding-bottom: env(safe-area-inset-bottom);"
       class="fixed bottom-0 left-0 right-0 bg-white border-t"
     >
-      <div class="max-w-3xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+      <div class="max-w-3xl mx-auto px-4 py-3 flex flex-col items-start gap-3">
+        <div class="w-full grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center">
+          <input
+            id="uploadFile"
+            type="file"
+            class="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-sky-100 file:text-sky-700 hover:file:bg-sky-200"
+          />
+          <input
+            id="uploadNote"
+            type="text"
+            class="w-full sm:w-56 rounded-md border-gray-300 shadow-sm focus:ring-sky-300 focus:border-sky-300 p-2 text-sm"
+            placeholder="Optional note"
+          />
+          <button
+            id="uploadBtn"
+            class="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+            type="button"
+          >
+            Upload File
+          </button>
+        </div>
+        <div class="w-full flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <label for="question" class="sr-only">Question</label>
           <div class="relative flex-1 min-w-0 w-full">
           <textarea
@@ -266,6 +287,7 @@
           >
             Clear History
           </button>
+        </div>
         </div>
       </div>
     </footer>
@@ -570,17 +592,17 @@
       </div>
     </div>
 
-    <!-- Emergency map modal: restores UI removed earlier -->
+    <!-- Neurologist map modal -->
     <div id="emergencyMapModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
       <div class="bg-white rounded-lg shadow-lg w-full max-w-3xl p-4 relative">
         <button aria-label="Close" onclick="hideEmergencyMap()" class="absolute top-2 right-2 text-gray-600 hover:text-gray-800">✕</button>
-        <h3 class="text-lg font-semibold mb-2">Nearby mental health services</h3>
-        <p class="text-sm text-gray-600 mb-3">If this is an emergency, contact your local emergency services right away. Below is a map of nearby psychology/mental health centres.</p>
+        <h3 class="text-lg font-semibold mb-2">Nearby neurologists</h3>
+        <p class="text-sm text-gray-600 mb-3">This map helps the user find nearby neurologists. The system is supportive only and is not a doctor.</p>
         <div class="w-full h-64 sm:h-80 mb-3">
-          <iframe id="emergencyMapIframe" class="w-full h-full border rounded" src="https://www.google.com/maps?q=psychology+center+near+me&output=embed"></iframe>
+          <iframe id="emergencyMapIframe" class="w-full h-full border rounded" src="https://www.google.com/maps?q=neurologist+near+me&output=embed"></iframe>
         </div>
         <div class="flex items-center justify-end gap-2">
-          <a id="openMapsLink" href="https://www.google.com/maps/search/psychology+center+near+me" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-2 bg-sky-600 text-white rounded">Open in Google Maps</a>
+          <a id="openMapsLink" href="https://www.google.com/maps/search/neurologist+near+me" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-2 bg-sky-600 text-white rounded">Open in Google Maps</a>
         </div>
       </div>
     </div>
