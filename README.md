@@ -167,7 +167,7 @@ Upload a prescription or document file.
 Key Python packages:
 
 - Flask & Flask-Cors
-- SQLAlchemy & pyodbc (SQL Server)
+- SQLAlchemy & pyodbc (Azure SQL Server)
 - LangChain & LangChain-Google-GenAI
 - FAISS
 - Google Generative AI
