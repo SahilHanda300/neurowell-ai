@@ -222,9 +222,9 @@ def _persist_chat_or_file(
     uploaded_file_type: str | None = None,
     uploaded_file_size: int | None = None,
     uploaded_file_content: bytes | None = None,
-) -> None:
+) -> dict:
     if not username:
-        return
+        return {"ok": False, "error": "missing username"}
 
     try:
         from src.audit.chat_history import save_chat_entry
@@ -232,7 +232,7 @@ def _persist_chat_or_file(
         engine = _build_neurowell_db_engine()
         if engine is None:
             logger.error("_persist_chat_or_file: engine is None — DATABASE_URI/DATABASE_URL not set or unparseable")
-            return
+            return {"ok": False, "error": "engine unavailable"}
 
         logger.debug("_persist_chat_or_file: saving row for user=%s", username)
         inserted_id = save_chat_entry(
@@ -246,8 +246,10 @@ def _persist_chat_or_file(
             uploaded_file_content=uploaded_file_content,
         )
         logger.info("_persist_chat_or_file: row saved OK id=%s user=%s", inserted_id, username)
+        return {"ok": True, "id": inserted_id}
     except Exception:
         logger.exception("Failed to persist chat/file history row")
+        return {"ok": False, "error": "persist exception"}
 
 
 def _load_user_history(username: str, limit: int = 300):
@@ -1002,6 +1004,33 @@ def db_health():
         ), 200
     except Exception as e:
         return jsonify({"ok": False, "db": "error", "detail": str(e)}), 500
+
+
+@api_bp.route("/db_write_test", methods=["POST", "GET"])
+def db_write_test():
+    """Write a known test row into chat_history to verify persistence path end-to-end."""
+    if not session.get('user') and not _allow_unauth_local():
+        return jsonify({"error": "authentication required"}), 401
+
+    try:
+        from sqlalchemy import text
+
+        username = _current_username() or os.getenv("API_USER") or "anonymous"
+        result = _persist_chat_or_file(
+            username=username,
+            user_message="__db_write_test__",
+            assistant_response="ok",
+        )
+
+        engine = _build_neurowell_db_engine()
+        count = None
+        if engine is not None:
+            with engine.connect() as conn:
+                count = conn.execute(text("SELECT COUNT(1) FROM dbo.chat_history")).scalar()
+
+        return jsonify({"write": result, "username": username, "chat_history_count": int(count or 0)}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": "write test failed", "detail": str(e)}), 500
 
 
 @api_bp.route("/audit", methods=["GET"])
