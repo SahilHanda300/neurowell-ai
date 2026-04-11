@@ -11,6 +11,36 @@ except Exception:  # pragma: no cover - optional dependency at import time
 logger = logging.getLogger("neurowell.chat_history")
 
 
+def _ensure_required_columns(engine: "Engine") -> None:
+    """Ensure required columns exist on dbo.chat_history for backward compatibility."""
+    required = {
+        "username": "NVARCHAR(256) NOT NULL",
+        "user_message": "NVARCHAR(MAX) NULL",
+        "assistant_response": "NVARCHAR(MAX) NULL",
+        "uploaded_file_name": "NVARCHAR(512) NULL",
+        "uploaded_file_type": "NVARCHAR(256) NULL",
+        "uploaded_file_size": "BIGINT NULL",
+        "uploaded_file_content": "VARBINARY(MAX) NULL",
+    }
+
+    with engine.begin() as conn:
+        existing_rows = conn.execute(
+            text(
+                """
+SELECT COLUMN_NAME
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'chat_history'
+"""
+            )
+        ).fetchall()
+        existing = {str(r[0]).lower() for r in existing_rows}
+
+        for name, ddl in required.items():
+            if name.lower() in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE dbo.chat_history ADD {name} {ddl}"))
+
+
 def ensure_chat_history_table(engine: "Engine") -> None:
     """Create dbo.chat_history if it does not already exist."""
     if engine is None:
@@ -35,6 +65,8 @@ CREATE TABLE dbo.chat_history (
     with engine.begin() as conn:
         try:
             conn.execute(text("SELECT TOP 1 id FROM dbo.chat_history"))
+            # Table exists; ensure all expected columns are present.
+            _ensure_required_columns(engine)
             return
         except Exception:
             conn.execute(text(create_ddl))

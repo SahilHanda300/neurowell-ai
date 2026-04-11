@@ -247,9 +247,9 @@ def _persist_chat_or_file(
         )
         logger.info("_persist_chat_or_file: row saved OK id=%s user=%s", inserted_id, username)
         return {"ok": True, "id": inserted_id}
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to persist chat/file history row")
-        return {"ok": False, "error": "persist exception"}
+        return {"ok": False, "error": "persist exception", "detail": str(exc)}
 
 
 def _load_user_history(username: str, limit: int = 300):
