@@ -103,7 +103,7 @@ INSERT INTO dbo.chat_history (
     uploaded_file_size,
     uploaded_file_content
 ) OUTPUT INSERTED.id
-) VALUES (
+VALUES (
     :username,
     :user_message,
     :assistant_response,
